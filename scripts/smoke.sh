@@ -136,6 +136,9 @@ else
   ko "el indice ciego no es correcto: ${INDICE}"
 fi
 
+BUSCADO=$(curl -sS "${BASE}/customers/by-document/${DOCUMENTO}" "${AUTH[@]}" | jq -r '.data.name // empty')
+check "la busqueda por documento encuentra al cliente (indice ciego)" "Cliente Prueba Humo" "${BUSCADO}"
+
 # ---------------------------------------------------------------------------
 echo
 echo "[5/8] Inventario y venta"
@@ -211,6 +214,14 @@ if [[ "${TABLERO}" =~ ^[0-9]+$ && "${TABLERO}" -ge 1 ]]; then
 else
   ko "el tablero no reporta ventas: ${TABLERO}"
 fi
+
+# Vista compuesta (BFF): una sola peticion debe traer las siete vistas.
+COMPUESTA=$(curl -sS "${BASE}/dashboard/overview" "${AUTH[@]}")
+VISTAS=$(echo "${COMPUESTA}" | jq -r '.data | keys | length')
+check "la vista compuesta del tablero trae las 7 vistas en una peticion" "7" "${VISTAS}"
+check "la vista compuesta no reporta vistas caidas" "0" "$(echo "${COMPUESTA}" | jq -r '.unavailable // [] | length')"
+check "la zona horaria del negocio viaja en la respuesta" "America/Bogota" \
+  "$(curl -sS "${BASE}/sales/stats" "${AUTH[@]}" | jq -r '.data.timezone // "sin zona"')"
 
 # ---------------------------------------------------------------------------
 echo

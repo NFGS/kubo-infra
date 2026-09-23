@@ -111,6 +111,7 @@ services:
       KUBO_ADMIN_EMAIL: ${KUBO_ADMIN_EMAIL:-admin@kubo.local}
       KUBO_ADMIN_PASSWORD: ${KUBO_ADMIN_PASSWORD:-Admin123!}
       KUBO_TENANT_NAME: ${KUBO_TENANT_NAME:-Tienda La Esquina}
+      KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
     ports:
       - "${KUBO_IAM_PORT:-9081}:8081"
@@ -167,6 +168,7 @@ services:
       DATABASE_URL: ecto://kubo_erp:${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}@postgres:5432/kubo_erp
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672
       SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:-kubo_dev_secret_key_base_please_change_in_production_0123456789}
+      KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       PORT: "8083"
       KUBO_RUN_MIGRATIONS: "true"
       PHX_SERVER: "true"
@@ -196,6 +198,7 @@ services:
     environment:
       MONGO_URL: mongodb://mongo:27017
       MONGO_DB: kubo_analytics
+      KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672/
       PORT: "8084"
     ports:
