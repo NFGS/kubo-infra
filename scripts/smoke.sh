@@ -82,6 +82,24 @@ check "el token trae el negocio" "true" "$([[ -n "${TENANT}" ]] && echo true || 
 JWKS=$(curl -sS "${BASE}/auth/.well-known/jwks.json" | jq -r '.keys | length')
 check "JWKS publica la llave de verificacion" "1" "${JWKS}"
 
+# --- Rotacion y reuso de tokens -------------------------------------------
+SESION=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+REFRESH_1=$(echo "${SESION}" | jq -r '.refreshToken // empty')
+
+ROTADO=$(curl -sS -X POST "${BASE}/auth/refresh" -H 'Content-Type: application/json' \
+  -d "{\"refreshToken\":\"${REFRESH_1}\"}")
+REFRESH_2=$(echo "${ROTADO}" | jq -r '.refreshToken // empty')
+check "el refresco de token emite uno nuevo" "true" \
+  "$([[ -n "${REFRESH_2}" && "${REFRESH_2}" != "${REFRESH_1}" ]] && echo true || echo false)"
+
+PERFIL=$(curl -sS "${BASE}/auth/me" -H "Authorization: Bearer $(echo "${ROTADO}" | jq -r '.accessToken')" | jq -r '.email')
+check "el token refrescado sirve para autenticarse" "${EMAIL}" "${PERFIL}"
+
+REUSO=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/refresh" \
+  -H 'Content-Type: application/json' -d "{\"refreshToken\":\"${REFRESH_1}\"}")
+check "reutilizar un token ya rotado responde 401" "401" "${REUSO}"
+
 # ---------------------------------------------------------------------------
 echo
 echo "[3/8] Control de acceso"
@@ -94,6 +112,24 @@ check "token falsificado responde 401" "401" "${FALSO}"
 
 SUPLANTACION=$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-User-Id: 00000000-0000-0000-0000-000000000000' "${BASE}/customers")
 check "cabecera de identidad inyectada es ignorada" "401" "${SUPLANTACION}"
+
+AUDITORIA=$(curl -sS "${BASE}/audit/verify" "${AUTH[@]}")
+check "la cadena de auditoria esta intacta" "true" "$(echo "${AUDITORIA}" | jq -r '.chainIntact')"
+AUDITADAS=$(echo "${AUDITORIA}" | jq -r '.entriesChecked')
+if [[ "${AUDITADAS}" =~ ^[0-9]+$ && "${AUDITADAS}" -ge 1 ]]; then
+  ok "se verificaron ${AUDITADAS} entradas de auditoria"
+else
+  ko "la verificacion de auditoria no reporto entradas: ${AUDITADAS}"
+fi
+
+# El intento fallido debe sobrevivir al rollback de la operacion.
+curl -sS -o /dev/null -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"clave-incorrecta-$(date +%s)\"}"
+EVENTOS=$(curl -sS "${BASE}/audit" "${AUTH[@]}")
+check "el intento de acceso fallido queda en la auditoria" "true" \
+  "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "LOGIN_FAILED")] | length')" -ge 1 ]] && echo true || echo false)"
+check "el reuso de token queda en la auditoria" "true" \
+  "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "REFRESH_REUSE_DETECTED")] | length')" -ge 1 ]] && echo true || echo false)"
 
 # ---------------------------------------------------------------------------
 echo
