@@ -1,0 +1,9 @@
+# Secretos: el .env real NUNCA se versiona (solo .env.example)
+.env
+.env.local
+
+# Estado de los scripts de operacion
+.foreign-stopped
+
+# Registros
+*.log

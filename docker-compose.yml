@@ -1,0 +1,284 @@
+name: kubo
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-postgres-env: &postgres-env
+  KUBO_IAM_DB_PASSWORD: ${KUBO_IAM_DB_PASSWORD:-kubo_iam_dev}
+  KUBO_CRM_DB_PASSWORD: ${KUBO_CRM_DB_PASSWORD:-kubo_crm_dev}
+  KUBO_ERP_DB_PASSWORD: ${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Infraestructura de datos
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: kubo-postgres
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: kubo_root
+      POSTGRES_PASSWORD: ${KUBO_POSTGRES_ROOT_PASSWORD:-kubo_root_dev}
+      POSTGRES_DB: postgres
+      <<: *postgres-env
+    ports:
+      - "${KUBO_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/10-init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kubo_root -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 512m
+    networks: [kubo-net]
+
+  mongo:
+    image: mongo:8
+    container_name: kubo-mongo
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${KUBO_MONGO_PORT:-27018}:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 384m
+    networks: [kubo-net]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: kubo-rabbitmq
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      RABBITMQ_DEFAULT_USER: ${KUBO_RABBITMQ_USER:-kubo}
+      RABBITMQ_DEFAULT_PASS: ${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}
+    ports:
+      - "${KUBO_RABBITMQ_PORT:-5673}:5672"
+      - "${KUBO_RABBITMQ_UI_PORT:-15673}:15672"
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    mem_limit: 384m
+    networks: [kubo-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: kubo-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${KUBO_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 160m
+    networks: [kubo-net]
+
+  # ---------------------------------------------------------------------------
+  # Microservicios
+  # ---------------------------------------------------------------------------
+  kubo-iam:
+    build:
+      context: ../kubo-iam
+      dockerfile: Dockerfile
+    container_name: kubo-iam
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/kubo_iam
+      SPRING_DATASOURCE_USERNAME: kubo_iam
+      SPRING_DATASOURCE_PASSWORD: ${KUBO_IAM_DB_PASSWORD:-kubo_iam_dev}
+      KUBO_SEED_ENABLED: "true"
+      KUBO_ADMIN_EMAIL: ${KUBO_ADMIN_EMAIL:-admin@kubo.local}
+      KUBO_ADMIN_PASSWORD: ${KUBO_ADMIN_PASSWORD:-Admin123!}
+      KUBO_TENANT_NAME: ${KUBO_TENANT_NAME:-Tienda La Esquina}
+      JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
+    ports:
+      - "${KUBO_IAM_PORT:-9081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    mem_limit: 640m
+    networks: [kubo-net]
+
+  kubo-crm:
+    build:
+      context: ../kubo-crm
+      dockerfile: Dockerfile
+    container_name: kubo-crm
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgres://kubo_crm:${KUBO_CRM_DB_PASSWORD:-kubo_crm_dev}@postgres:5432/kubo_crm
+      KUBO_FIELD_ENCRYPTION_KEY: ${KUBO_FIELD_ENCRYPTION_KEY}
+      KUBO_BLIND_INDEX_KEY: ${KUBO_BLIND_INDEX_KEY}
+      SECRET_KEY_BASE: ${KUBO_CRM_SECRET_KEY_BASE:-kubo_crm_dev_secret_key_base_cambiar_en_produccion_0123456789}
+      KUBO_RUN_MIGRATIONS: "true"
+      PORT: "8082"
+    ports:
+      - "${KUBO_CRM_PORT:-9082}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    mem_limit: 512m
+    networks: [kubo-net]
+
+  kubo-erp:
+    build:
+      context: ../kubo-erp
+      dockerfile: Dockerfile
+    container_name: kubo-erp
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MIX_ENV: prod
+      DATABASE_URL: ecto://kubo_erp:${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}@postgres:5432/kubo_erp
+      AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672
+      SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:-kubo_dev_secret_key_base_please_change_in_production_0123456789}
+      PORT: "8083"
+      KUBO_RUN_MIGRATIONS: "true"
+      PHX_SERVER: "true"
+    ports:
+      - "${KUBO_ERP_PORT:-9083}:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    mem_limit: 512m
+    networks: [kubo-net]
+
+  kubo-analytics:
+    build:
+      context: ../kubo-analytics
+      dockerfile: Dockerfile
+    container_name: kubo-analytics
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: kubo_analytics
+      AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672/
+      PORT: "8084"
+    ports:
+      - "${KUBO_ANALYTICS_PORT:-9084}:8084"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 448m
+    networks: [kubo-net]
+
+  # ---------------------------------------------------------------------------
+  # Puerta de entrada (API Gateway)
+  # ---------------------------------------------------------------------------
+  kubo-gateway:
+    build:
+      context: ../kubo-gateway
+      dockerfile: Dockerfile
+    container_name: kubo-gateway
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      REDIS_URL: redis://redis:6379
+      KUBO_IAM_URL: http://kubo-iam:8081
+      KUBO_CRM_URL: http://kubo-crm:8082
+      KUBO_ERP_URL: http://kubo-erp:8083
+      KUBO_ANALYTICS_URL: http://kubo-analytics:8084
+      KUBO_JWKS_URI: http://kubo-iam:8081/api/v1/auth/.well-known/jwks.json
+      KUBO_RATE_LIMIT_PER_MINUTE: "600"
+      KUBO_AUTH_RATE_LIMIT_PER_MINUTE: "40"
+    ports:
+      - "${KUBO_GATEWAY_PORT:-9080}:8080"
+    depends_on:
+      kubo-iam:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 384m
+    networks: [kubo-net]
+
+  # ---------------------------------------------------------------------------
+  # PWA (nginx sirve el front y proxea /api al gateway: mismo origen, sin CORS)
+  # ---------------------------------------------------------------------------
+  kubo-web:
+    build:
+      context: ../kubo-web
+      dockerfile: Dockerfile
+    container_name: kubo-web
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${KUBO_WEB_PORT:-3000}:80"
+    depends_on:
+      kubo-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    networks: [kubo-net]
+
+volumes:
+  pgdata:
+  mongodata:
+  rabbitdata:
+
+networks:
+  kubo-net:
+    driver: bridge
