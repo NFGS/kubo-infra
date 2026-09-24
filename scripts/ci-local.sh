@@ -47,14 +47,10 @@ fi
 echo "[2/5] pruebas unitarias e integracion"
 paso "kubo-gateway (typecheck + tests)" bash -c "cd '${ROOT}/kubo-gateway' && npm run typecheck && npm test"
 paso "kubo-iam (mvn verify: unitarias + Testcontainers + cobertura >= 80%)" bash -c "cd '${ROOT}/kubo-iam' && mvn -q verify"
-paso "kubo-crm (cifrado de campos)" bash -c "cd '${ROOT}/kubo-crm' && ruby test/field_cipher_test.rb"
-paso "kubo-erp (dinero, outbox, paginacion)" "${ROOT}/kubo-infra/scripts/erp-tests.sh"
+paso "kubo-crm (cifrado + integracion RLS)" "${ROOT}/kubo-infra/scripts/crm-tests.sh"
+paso "kubo-erp (dinero, outbox, integracion RLS)" "${ROOT}/kubo-infra/scripts/erp-tests.sh"
 
-if python3 -c "import pytest" >/dev/null 2>&1; then
-  paso "kubo-analytics (pytest + cobertura de dominio >= 80%)" bash -c "cd '${ROOT}/kubo-analytics' && python3 -m pytest -q --cov=app.processing --cov-fail-under=80"
-else
-  printf '  \033[33mOMITIDO\033[0m kubo-analytics: falta pytest (pip install -r requirements-dev.txt)\n'
-fi
+paso "kubo-analytics (pytest + cobertura + integracion MongoDB)" "${ROOT}/kubo-infra/scripts/analytics-tests.sh"
 paso "kubo-web (typecheck)" bash -c "cd '${ROOT}/kubo-web' && npm run typecheck"
 
 echo "[3/5] contratos OpenAPI"
