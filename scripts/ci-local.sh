@@ -64,7 +64,13 @@ echo "[4/5] prueba de humo"
 paso "humo end-to-end" bash -c "'${ROOT}/kubo-infra/scripts/smoke.sh'"
 
 echo "[5/5] E2E y accesibilidad"
+# Cada pantalla restaura la sesion (refresh + me) y eso consume el limite de
+# autenticacion; se eleva solo durante la corrida y se restaura al terminar.
+COMPOSE_FILE="${ROOT}/kubo-infra/docker-compose.yml"
+KUBO_AUTH_RATE_LIMIT_PER_MINUTE=1000000 docker compose -f "${COMPOSE_FILE}" up -d kubo-gateway >/dev/null 2>&1
+sleep 5
 paso "kubo-web (Playwright + axe)" bash -c "cd '${ROOT}/kubo-web' && npx playwright test"
+KUBO_AUTH_RATE_LIMIT_PER_MINUTE=40 docker compose -f "${COMPOSE_FILE}" up -d kubo-gateway >/dev/null 2>&1
 
 echo "================================================================"
 printf 'Resultado: \033[32m%d verificaciones\033[0m, \033[31m%d fallos\033[0m\n\n' "${PASS}" "${FAIL}"
