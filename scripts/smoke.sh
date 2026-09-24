@@ -36,6 +36,19 @@ ko() {
   FAIL=$((FAIL + 1))
 }
 
+# Codigo TOTP vigente (RFC 6238) para un secreto Base32: la prueba del segundo
+# factor no puede depender de una implementacion propia que podria estar mal.
+totp_code() {
+  python3 - "$1" << 'PYTOTP'
+import base64, hmac, hashlib, struct, sys, time
+secret = sys.argv[1]
+key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8))
+digest = hmac.new(key, struct.pack(">Q", int(time.time()) // 30), hashlib.sha1).digest()
+offset = digest[-1] & 0x0F
+print(f"{(struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 10**6:06d}")
+PYTOTP
+}
+
 check() {
   local description="$1" expected="$2" actual="$3"
   if [[ "${actual}" == "${expected}" ]]; then
@@ -217,6 +230,33 @@ AUTO_DEGRADE=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "${BASE}/users/$
 check "un administrador no puede degradarse a si mismo" "409" "${AUTO_DEGRADE}"
 AUTO_BAJA=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "${BASE}/users/${YO_ID}" "${AUTH[@]}" -d '{"status":"DISABLED"}')
 check "un administrador no puede deshabilitarse a si mismo" "409" "${AUTO_BAJA}"
+
+# Segundo factor (P-30): configuracion, activacion y acceso en dos pasos con un
+# codigo TOTP real. Se hace con el usuario de prueba para no tocar al admin.
+NUEVO_AUTH=(-H "Authorization: Bearer ${NUEVO_TOKEN}" -H 'Content-Type: application/json')
+SETUP=$(curl -sS -X POST "${BASE}/auth/totp/setup" "${NUEVO_AUTH[@]}")
+SECRETO=$(echo "${SETUP}" | jq -r '.secret // empty')
+check "el segundo factor entrega secreto y URI otpauth" "true" \
+  "$([[ -n "${SECRETO}" && "$(echo "${SETUP}" | jq -r '.otpauthUri // empty')" == otpauth://totp/* ]] && echo true || echo false)"
+
+check "activar el segundo factor con el codigo vigente responde 200" "200" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/totp/enable" "${NUEVO_AUTH[@]}" \
+     -d "{\"code\":\"$(totp_code "${SECRETO}")\"}")"
+
+LOGIN_TOTP=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${USUARIO_NUEVO}\",\"password\":\"Vendedor123!\"}")
+check "el acceso con segundo factor pide el codigo" "true" "$(echo "${LOGIN_TOTP}" | jq -r '.totpRequired // false')"
+DESAFIO=$(echo "${LOGIN_TOTP}" | jq -r '.challengeToken // empty')
+check "el codigo vigente cierra el acceso" "true" \
+  "$([[ -n "$(curl -sS -X POST "${BASE}/auth/totp/verify" -H 'Content-Type: application/json' \
+       -d "{\"challengeToken\":\"${DESAFIO}\",\"code\":\"$(totp_code "${SECRETO}")\"}" | jq -r '.accessToken // empty')" ]] && echo true || echo false)"
+check "un codigo invalido no cierra el acceso" "INVALID_TOTP" \
+  "$(curl -sS -X POST "${BASE}/auth/totp/verify" -H 'Content-Type: application/json' \
+     -d "{\"challengeToken\":\"${DESAFIO}\",\"code\":\"000000\"}" | jq -r '.code // "OK"')"
+
+# Se restaura el usuario de prueba (sin segundo factor).
+curl -sS -o /dev/null -X POST "${BASE}/auth/totp/disable" "${NUEVO_AUTH[@]}" \
+  -d "{\"code\":\"$(totp_code "${SECRETO}")\"}"
 
 USUARIO_ID=$(echo "${CREADO}" | jq -r '.id')
 curl -sS -o /dev/null -X PATCH "${BASE}/users/${USUARIO_ID}" "${AUTH[@]}" -d '{"status":"DISABLED"}'

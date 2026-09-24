@@ -118,6 +118,8 @@ services:
       # Llave RSA para firmar los JWT. Si se deja vacia, IAM genera una efimera y
       # TODAS las sesiones se invalidan al reiniciar el servicio.
       KUBO_JWT_PRIVATE_KEY: ${KUBO_JWT_PRIVATE_KEY:-}
+      # Llave con la que se cifra el secreto TOTP en reposo (P-30).
+      KUBO_TOTP_ENCRYPTION_KEY: ${KUBO_TOTP_ENCRYPTION_KEY:-}
       # Bloqueo de cuenta por intentos fallidos (P-11).
       KUBO_AUTH_MAX_FAILED_ATTEMPTS: ${KUBO_AUTH_MAX_FAILED_ATTEMPTS:-5}
       KUBO_AUTH_LOCK_MINUTES: ${KUBO_AUTH_LOCK_MINUTES:-15}
