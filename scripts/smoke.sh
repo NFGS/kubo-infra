@@ -416,6 +416,21 @@ check "el cambio de vertical aplica al nuevo token" "Platillo" \
 # Se restaura el vertical de la demostracion.
 curl -sS -o /dev/null -X PATCH "${BASE}/tenants/me" "${AUTH[@]}" -d '{"vertical":"retail"}'
 
+# El paquete tambien cambia el comportamiento (P-17): un servicio no lleva
+# inventario, se vende sin existencias y no deja kardex; la venta guarda la mesa.
+SKU_SERVICIO="SRV-$(date +%s)"
+SERVICIO=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
+  -d "{\"sku\":\"${SKU_SERVICIO}\",\"name\":\"Servicio de prueba\",\"price\":25000,\"cost\":0,\"tracks_stock\":false}" \
+  | jq -r '.data.id // empty')
+VENTA_SERVICIO=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${SERVICIO}\",\"quantity\":3}],\"payment_method\":\"CARD\",\"table_number\":\"Mesa 4\"}")
+check "un servicio se vende sin existencias" "3" \
+  "$(echo "${VENTA_SERVICIO}" | jq -r '.data.items[0].quantity // empty')"
+check "la venta guarda la mesa del vertical" "Mesa 4" \
+  "$(echo "${VENTA_SERVICIO}" | jq -r '.data.table_number // empty')"
+check "el servicio no deja movimientos de kardex" "0" \
+  "$(curl -sS "${BASE}/stock/movements?product_id=${SERVICIO}" "${AUTH[@]}" | jq -r '.data | length')"
+
 # ADR-0012: el ERP respeta la zona horaria del negocio que propaga el gateway y
 # rechaza una zona desconocida en lugar de caer a UTC en silencio.
 TZ_DIRECTA=$(curl -sS http://localhost:9083/api/v1/sales/stats \
