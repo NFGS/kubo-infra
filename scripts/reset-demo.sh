@@ -31,7 +31,8 @@ echo "[kubo] limpiando datos de demostracion"
 docker exec kubo-postgres psql -U kubo_root -d kubo_iam -q -c "
   DELETE FROM tenants WHERE slug LIKE 'negocio-aislado%';
   TRUNCATE audit_logs;
-" && echo "  identidad: negocios de prueba eliminados, bitacora reiniciada"
+  TRUNCATE mail_outbox;
+" && echo "  identidad: negocios de prueba eliminados, bitacora y buzon reiniciados"
 
 # --- CRM: clientes ------------------------------------------------------------
 docker exec kubo-postgres psql -U kubo_root -d kubo_crm -q -c "DELETE FROM customers;" \
@@ -40,7 +41,8 @@ docker exec kubo-postgres psql -U kubo_root -d kubo_crm -q -c "DELETE FROM custo
 # --- ERP: ventas, kardex y catalogo ------------------------------------------
 docker exec kubo-postgres psql -U kubo_root -d kubo_erp -q -c "
   TRUNCATE sale_items, sales, stock_movements, products CASCADE;
-" && echo "  erp: ventas, kardex y catalogo reiniciados"
+  TRUNCATE outbox_events;
+" && echo "  erp: ventas, kardex, catalogo y bandeja de salida reiniciados"
 
 # --- Analitica: modelo de lectura --------------------------------------------
 docker exec kubo-mongo mongosh kubo_analytics --quiet --eval "
