@@ -7,3 +7,6 @@
 
 # Registros
 *.log
+
+# Respaldos locales (nunca se versionan: contienen datos del negocio)
+backups/

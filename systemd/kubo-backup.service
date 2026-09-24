@@ -1,0 +1,12 @@
+[Unit]
+Description=Kubo · respaldo diario de bases de datos y configuracion
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kubo
+ExecStart=/opt/kubo/kubo-infra/scripts/backup.sh
+# El respaldo puede tardar; se registra en el journal para auditoria.
+StandardOutput=journal
+StandardError=journal

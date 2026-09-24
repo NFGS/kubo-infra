@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Kubo — terminacion TLS en la instalacion del negocio (P-27).
+#
+# Caddy escucha en 80/443 del contenedor (mapeados a 3080/3443 del host) y
+# redirige todo el trafico HTTP a HTTPS. Con `tls internal` emite su propio
+# certificado para la red del local; para un dominio publico, cambie
+# KUBO_TLS_DOMAIN al dominio real y quite `tls internal` (Caddy gestionara el
+# certificado Let's Encrypt automaticamente).
+#
+# La PWA (kubo-web) ya proxea /api al gateway, de modo que un solo dominio
+# cubre la aplicacion completa.
+# ---------------------------------------------------------------------------
+
+{
+	local_certs
+}
+
+{$KUBO_TLS_DOMAIN:localhost} {
+	tls internal
+
+	reverse_proxy kubo-web:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

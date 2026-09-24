@@ -2,10 +2,11 @@
 # ---------------------------------------------------------------------------
 # Prueba de humo end-to-end de Kubo.
 #
-# Verifica, contra el sistema en ejecucion: salud de los 5 contenedores de
-# aplicacion, autenticacion JWT, rechazo de peticiones sin token, cifrado de
-# datos personales, descuento de inventario y proyeccion del evento de venta en
-# analitica.
+# Verifica, contra el sistema en ejecucion: salud de los contenedores, cookie
+# httpOnly del refresh token, autenticacion JWT, bloqueo por intentos fallidos,
+# auditoria versionada, recuperacion de contrasena, RLS en las tres bases,
+# outbox transaccional, cifrado de datos personales, inventario, proyeccion del
+# evento, limites de tasa y TLS.
 #
 # Uso:  make smoke
 # ---------------------------------------------------------------------------
@@ -14,6 +15,13 @@ set -uo pipefail
 BASE="${KUBO_API:-http://localhost:9080/api/v1}"
 EMAIL="${KUBO_ADMIN_EMAIL:-admin@kubo.local}"
 PASSWORD="${KUBO_ADMIN_PASSWORD:-Admin123!}"
+
+JAR1=$(mktemp)
+JAR2=$(mktemp)
+HDR1=$(mktemp)
+HDR2=$(mktemp)
+cleanup() { rm -f "${JAR1}" "${JAR2}" "${HDR1}" "${HDR2}"; }
+trap cleanup EXIT
 
 PASS=0
 FAIL=0
@@ -37,12 +45,21 @@ check() {
   fi
 }
 
+check_positivo() {
+  local description="$1" actual="$2"
+  if [[ "${actual}" =~ ^[0-9]+$ && "${actual}" -gt 0 ]]; then
+    ok "${description}"
+  else
+    ko "${description} (obtenido '${actual}')"
+  fi
+}
+
 echo
 echo "Kubo · prueba de humo end-to-end"
 echo "================================================================"
 
 # ---------------------------------------------------------------------------
-echo "[1/8] Salud de los servicios"
+echo "[1/10] Salud de los servicios"
 # ---------------------------------------------------------------------------
 for service in "kubo-gateway:9080" "kubo-iam:9081" "kubo-crm:9082" "kubo-erp:9083" "kubo-analytics:9084"; do
   name="${service%%:*}"
@@ -53,9 +70,9 @@ done
 
 # ---------------------------------------------------------------------------
 echo
-echo "[2/8] Autenticacion"
+echo "[2/10] Autenticacion y cookie httpOnly"
 # ---------------------------------------------------------------------------
-LOGIN=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+LOGIN=$(curl -sS -c "${JAR1}" -D "${HDR1}" -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
   -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
 TOKEN=$(echo "${LOGIN}" | jq -r '.accessToken // empty')
 TENANT=$(echo "${LOGIN}" | jq -r '.user.tenantId // empty')
@@ -82,27 +99,40 @@ check "el token trae el negocio" "true" "$([[ -n "${TENANT}" ]] && echo true || 
 JWKS=$(curl -sS "${BASE}/auth/.well-known/jwks.json" | jq -r '.keys | length')
 check "JWKS publica la llave de verificacion" "1" "${JWKS}"
 
-# --- Rotacion y reuso de tokens -------------------------------------------
-SESION=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
-REFRESH_1=$(echo "${SESION}" | jq -r '.refreshToken // empty')
+check "el refresh token NO viaja en el cuerpo del login" "AUSENTE" \
+  "$(echo "${LOGIN}" | jq -r '.refreshToken // "AUSENTE"')"
 
-ROTADO=$(curl -sS -X POST "${BASE}/auth/refresh" -H 'Content-Type: application/json' \
-  -d "{\"refreshToken\":\"${REFRESH_1}\"}")
-REFRESH_2=$(echo "${ROTADO}" | jq -r '.refreshToken // empty')
-check "el refresco de token emite uno nuevo" "true" \
-  "$([[ -n "${REFRESH_2}" && "${REFRESH_2}" != "${REFRESH_1}" ]] && echo true || echo false)"
+COOKIE=$(grep -i '^set-cookie: kubo_refresh=' "${HDR1}" | head -1)
+check "la cookie de refresco es httpOnly y SameSite=Strict" "si" \
+  "$([[ "${COOKIE}" == *"HttpOnly"* && "${COOKIE}" == *"SameSite=Strict"* ]] && echo si || echo no)"
 
-PERFIL=$(curl -sS "${BASE}/auth/me" -H "Authorization: Bearer $(echo "${ROTADO}" | jq -r '.accessToken')" | jq -r '.email')
+ROTADO=$(curl -sS -b "${JAR1}" -c "${JAR2}" -X POST "${BASE}/auth/refresh")
+ACCESS_2=$(echo "${ROTADO}" | jq -r '.accessToken // empty')
+check "el refresco con la cookie emite un access token nuevo" "true" \
+  "$([[ -n "${ACCESS_2}" && "${ACCESS_2}" != "${TOKEN}" ]] && echo true || echo false)"
+check "el refresh token NO viaja en el cuerpo del refresco" "AUSENTE" \
+  "$(echo "${ROTADO}" | jq -r '.refreshToken // "AUSENTE"')"
+
+PERFIL=$(curl -sS "${BASE}/auth/me" -H "Authorization: Bearer ${ACCESS_2}" | jq -r '.email')
 check "el token refrescado sirve para autenticarse" "${EMAIL}" "${PERFIL}"
 
-REUSO=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/refresh" \
-  -H 'Content-Type: application/json' -d "{\"refreshToken\":\"${REFRESH_1}\"}")
-check "reutilizar un token ya rotado responde 401" "401" "${REUSO}"
+REUSO=$(curl -sS -o /dev/null -w '%{http_code}' -b "${JAR1}" -X POST "${BASE}/auth/refresh")
+check "reutilizar la cookie ya rotada responde 401" "401" "${REUSO}"
+
+# El reuso es senal de robo: la familia completa debe quedar revocada.
+FAMILIA=$(curl -sS -o /dev/null -w '%{http_code}' -b "${JAR2}" -X POST "${BASE}/auth/refresh")
+check "el reuso invalida la familia completa de tokens" "401" "${FAMILIA}"
+
+CIERRE=$(curl -sS -o /dev/null -w '%{http_code}' -b "${JAR2}" -c "${JAR2}" -D "${HDR2}" -X POST "${BASE}/auth/logout")
+check "cerrar sesion responde 204" "204" "${CIERRE}"
+check "el cierre de sesion borra la cookie" "1" \
+  "$(grep -i '^set-cookie: kubo_refresh=' "${HDR2}" | grep -ci 'Max-Age=0\|Expires=Thu, 01 Jan 1970')"
+check "tras cerrar sesion el refresco responde 401" "401" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -b "${JAR2}" -X POST "${BASE}/auth/refresh")"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[3/8] Control de acceso"
+echo "[3/10] Control de acceso, auditoria y bloqueo de cuenta"
 # ---------------------------------------------------------------------------
 SIN_TOKEN=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/customers")
 check "sin token responde 401" "401" "${SIN_TOKEN}"
@@ -113,27 +143,40 @@ check "token falsificado responde 401" "401" "${FALSO}"
 SUPLANTACION=$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-User-Id: 00000000-0000-0000-0000-000000000000' "${BASE}/customers")
 check "cabecera de identidad inyectada es ignorada" "401" "${SUPLANTACION}"
 
+# Bloqueo de cuenta (P-11): el usuario se crea aqui y se reutiliza en el bloque 9.
+SUFIJO=$(date +%s)
+LOCK_EMAIL="bloqueo${SUFIJO}@kubo.local"
+LOCK_PASSWORD="ClaveBloqueo1!"
+REGISTRO=$(curl -sS -X POST "${BASE}/auth/register" -H 'Content-Type: application/json' \
+  -d "{\"tenantName\":\"Negocio Aislado Bloqueo ${SUFIJO}\",\"fullName\":\"Usuario Bloqueo\",\"email\":\"${LOCK_EMAIL}\",\"password\":\"${LOCK_PASSWORD}\"}")
+check "usuario de prueba registrado" "true" \
+  "$([[ -n "$(echo "${REGISTRO}" | jq -r '.accessToken // empty')" ]] && echo true || echo false)"
+
+for intento in 1 2 3 4 5; do
+  curl -sS -o /dev/null -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${LOCK_EMAIL}\",\"password\":\"mala-${intento}\"}"
+done
+BLOQUEO=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${LOCK_EMAIL}\",\"password\":\"${LOCK_PASSWORD}\"}" | jq -r '.code // empty')
+check "la cuenta se bloquea tras 5 intentos fallidos" "ACCOUNT_LOCKED" "${BLOQUEO}"
+
 AUDITORIA=$(curl -sS "${BASE}/audit/verify" "${AUTH[@]}")
 check "la cadena de auditoria esta intacta" "true" "$(echo "${AUDITORIA}" | jq -r '.chainIntact')"
-AUDITADAS=$(echo "${AUDITORIA}" | jq -r '.entriesChecked')
-if [[ "${AUDITADAS}" =~ ^[0-9]+$ && "${AUDITADAS}" -ge 1 ]]; then
-  ok "se verificaron ${AUDITADAS} entradas de auditoria"
-else
-  ko "la verificacion de auditoria no reporto entradas: ${AUDITADAS}"
-fi
+check_positivo "se verificaron entradas de auditoria" "$(echo "${AUDITORIA}" | jq -r '.entriesChecked')"
+check "la bitacora declara la version vigente del algoritmo" "true" \
+  "$([[ "$(echo "${AUDITORIA}" | jq -r '.hashVersions["2"] // 0')" -ge 1 ]] && echo true || echo false)"
 
-# El intento fallido debe sobrevivir al rollback de la operacion.
-curl -sS -o /dev/null -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${EMAIL}\",\"password\":\"clave-incorrecta-$(date +%s)\"}"
 EVENTOS=$(curl -sS "${BASE}/audit" "${AUTH[@]}")
 check "el intento de acceso fallido queda en la auditoria" "true" \
   "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "LOGIN_FAILED")] | length')" -ge 1 ]] && echo true || echo false)"
+check "el bloqueo de cuenta queda en la auditoria" "true" \
+  "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "ACCOUNT_LOCKED")] | length')" -ge 1 ]] && echo true || echo false)"
 check "el reuso de token queda en la auditoria" "true" \
   "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "REFRESH_REUSE_DETECTED")] | length')" -ge 1 ]] && echo true || echo false)"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[4/8] Clientes y cifrado de datos personales"
+echo "[4/10] Clientes, cifrado y RLS"
 # ---------------------------------------------------------------------------
 DOCUMENTO="1099$(date +%H%M%S)"
 CLIENTE=$(curl -sS -X POST "${BASE}/customers" "${AUTH[@]}" \
@@ -175,9 +218,15 @@ fi
 BUSCADO=$(curl -sS "${BASE}/customers/by-document/${DOCUMENTO}" "${AUTH[@]}" | jq -r '.data.name // empty')
 check "la busqueda por documento encuentra al cliente (indice ciego)" "Cliente Prueba Humo" "${BUSCADO}"
 
+CRM_SIN=$(docker exec kubo-postgres psql -U kubo_crm -d kubo_crm -tAc "select count(*) from customers" 2>/dev/null | tr -d '[:space:]')
+check "RLS en CRM: sin contexto de negocio no hay filas" "0" "${CRM_SIN}"
+CRM_CON=$(docker exec kubo-postgres psql -U kubo_crm -d kubo_crm -tAc \
+  "select set_config('app.tenant_id','${TENANT}',false); select count(*) from customers" 2>/dev/null | tail -1 | tr -d '[:space:]')
+check_positivo "RLS en CRM: con el negocio en contexto hay filas" "${CRM_CON}"
+
 # ---------------------------------------------------------------------------
 echo
-echo "[5/8] Inventario y venta"
+echo "[5/10] Inventario, venta y outbox transaccional"
 # ---------------------------------------------------------------------------
 SKU="SMOKE-$(date +%H%M%S)"
 PRODUCTO=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
@@ -221,9 +270,32 @@ SOBREVENTA=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/sales" "${
   -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":99}],\"payment_method\":\"CASH\"}")
 check "vender sin existencias responde 409" "409" "${SOBREVENTA}"
 
+# Outbox (P-01): la venta y su evento se confirman juntos.
+OUTBOX_FILA=$(docker exec kubo-postgres psql -U kubo_root -d kubo_erp -tAc \
+  "select count(*) from outbox_events where payload->'data'->>'sale_id' = '${VENTA_ID}'" 2>/dev/null | tr -d '[:space:]')
+check "el evento de la venta quedo en la bandeja de salida" "1" "${OUTBOX_FILA}"
+
+PUBLICADO="no"
+for _ in $(seq 1 15); do
+  ESTADO=$(docker exec kubo-postgres psql -U kubo_root -d kubo_erp -tAc \
+    "select status from outbox_events where payload->'data'->>'sale_id' = '${VENTA_ID}'" 2>/dev/null | tr -d '[:space:]')
+  if [[ "${ESTADO}" == "PUBLISHED" ]]; then
+    PUBLICADO="si"
+    break
+  fi
+  sleep 1
+done
+check "el evento se publico en el bus" "si" "${PUBLICADO}"
+
+ERP_SIN=$(docker exec kubo-postgres psql -U kubo_erp -d kubo_erp -tAc "select count(*) from products" 2>/dev/null | tr -d '[:space:]')
+check "RLS en ERP: sin contexto de negocio no hay filas" "0" "${ERP_SIN}"
+ERP_CON=$(docker exec kubo-postgres psql -U kubo_erp -d kubo_erp -tAc \
+  "select set_config('app.tenant_id','${TENANT}',false); select count(*) from products" 2>/dev/null | tail -1 | tr -d '[:space:]')
+check_positivo "RLS en ERP: con el negocio en contexto hay filas" "${ERP_CON}"
+
 # ---------------------------------------------------------------------------
 echo
-echo "[6/8] Evento de venta y tablero (RabbitMQ + MongoDB)"
+echo "[6/10] Evento de venta y tablero (RabbitMQ + MongoDB)"
 # ---------------------------------------------------------------------------
 PROYECTADA="no"
 for _ in $(seq 1 15); do
@@ -238,20 +310,11 @@ check "la venta llego al modelo de lectura de analitica" "si" "${PROYECTADA}"
 
 EN_MONGO=$(docker exec kubo-mongo mongosh kubo_analytics --quiet --eval \
   "db.events.countDocuments({event_type: 'sale.created'})" 2>/dev/null | tr -d '\r')
-if [[ "${EN_MONGO}" =~ ^[0-9]+$ && "${EN_MONGO}" -ge 1 ]]; then
-  ok "MongoDB guardo ${EN_MONGO} evento(s) sale.created"
-else
-  ko "no se encontraron eventos en MongoDB: ${EN_MONGO}"
-fi
+check_positivo "MongoDB guardo eventos sale.created" "${EN_MONGO}"
 
 TABLERO=$(curl -sS "${BASE}/dashboard/summary" "${AUTH[@]}" | jq -r '.data.sales_count')
-if [[ "${TABLERO}" =~ ^[0-9]+$ && "${TABLERO}" -ge 1 ]]; then
-  ok "el tablero reporta ${TABLERO} venta(s)"
-else
-  ko "el tablero no reporta ventas: ${TABLERO}"
-fi
+check_positivo "el tablero reporta ventas" "${TABLERO}"
 
-# Vista compuesta (BFF): una sola peticion debe traer las siete vistas.
 COMPUESTA=$(curl -sS "${BASE}/dashboard/overview" "${AUTH[@]}")
 VISTAS=$(echo "${COMPUESTA}" | jq -r '.data | keys | length')
 check "la vista compuesta del tablero trae las 7 vistas en una peticion" "7" "${VISTAS}"
@@ -259,9 +322,12 @@ check "la vista compuesta no reporta vistas caidas" "0" "$(echo "${COMPUESTA}" |
 check "la zona horaria del negocio viaja en la respuesta" "America/Bogota" \
   "$(curl -sS "${BASE}/sales/stats" "${AUTH[@]}" | jq -r '.data.timezone // "sin zona"')"
 
+OUTBOX_FALLIDOS=$(curl -sS http://localhost:9083/api/v1/health | jq -r '.outbox.failed // "?"')
+check "la bandeja de salida no tiene eventos fallidos" "0" "${OUTBOX_FALLIDOS}"
+
 # ---------------------------------------------------------------------------
 echo
-echo "[7/8] Anulacion de venta (devolucion de inventario)"
+echo "[7/10] Anulacion de venta (devolucion de inventario)"
 # ---------------------------------------------------------------------------
 ANULADA=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/void" "${AUTH[@]}" | jq -r '.data.status')
 check "la venta queda anulada" "VOIDED" "${ANULADA}"
@@ -271,7 +337,7 @@ check "el inventario vuelve a 10 unidades" "10" "${STOCK_DEVUELTO}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[8/8] Aislamiento entre negocios"
+echo "[8/10] Aislamiento entre negocios"
 # ---------------------------------------------------------------------------
 OTRO=$(curl -sS -X POST "${BASE}/auth/register" -H 'Content-Type: application/json' \
   -d "{\"tenantName\":\"Negocio Aislado $(date +%H%M%S)\",\"fullName\":\"Otro Dueno\",\"email\":\"otro$(date +%H%M%S)@kubo.local\",\"password\":\"OtraClave123!\"}")
@@ -287,6 +353,55 @@ if [[ -n "${OTRO_TOKEN}" ]]; then
 else
   ko "no fue posible registrar el segundo negocio: ${OTRO}"
 fi
+
+IAM_SIN=$(docker exec kubo-postgres psql -U kubo_iam -d kubo_iam -tAc "select count(*) from users" 2>/dev/null | tr -d '[:space:]')
+check "RLS en IAM: sin contexto de negocio no hay filas" "0" "${IAM_SIN}"
+
+# ---------------------------------------------------------------------------
+echo
+echo "[9/10] Recuperacion de contrasena"
+# ---------------------------------------------------------------------------
+check "solicitar el enlace responde 204" "204" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/forgot-password" \
+    -H 'Content-Type: application/json' -d "{\"email\":\"${LOCK_EMAIL}\"}")"
+
+EN_BUZON=$(docker exec kubo-postgres psql -U kubo_root -d kubo_iam -tAc \
+  "select count(*) from mail_outbox where recipient = '${LOCK_EMAIL}'" 2>/dev/null | tr -d '[:space:]')
+check "el enlace quedo en el buzon de correo" "1" "${EN_BUZON}"
+
+TOKEN_RESET=$(docker exec kubo-postgres psql -U kubo_root -d kubo_iam -tAc \
+  "select body from mail_outbox where recipient = '${LOCK_EMAIL}' order by created_at desc limit 1" 2>/dev/null \
+  | grep -o 'token=[A-Za-z0-9_-]*' | cut -d= -f2)
+
+NUEVA_CLAVE="ClaveNueva9!"
+check "consumir el enlace responde 204" "204" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/reset-password" \
+    -H 'Content-Type: application/json' -d "{\"token\":\"${TOKEN_RESET}\",\"newPassword\":\"${NUEVA_CLAVE}\"}")"
+
+REINGRESO=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${LOCK_EMAIL}\",\"password\":\"${NUEVA_CLAVE}\"}" | jq -r '.user.email // empty')
+check "la cuenta se desbloquea y entra con la clave nueva" "${LOCK_EMAIL}" "${REINGRESO}"
+
+check "el enlace no se puede reutilizar" "400" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/reset-password" \
+    -H 'Content-Type: application/json' -d "{\"token\":\"${TOKEN_RESET}\",\"newPassword\":\"OtraClave10!\"}")"
+
+check "no se revela si el correo existe" "204" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/forgot-password" \
+    -H 'Content-Type: application/json' -d '{"email":"no-existe@kubo.local"}')"
+
+# ---------------------------------------------------------------------------
+echo
+echo "[10/10] Limite de tasa por usuario y TLS"
+# ---------------------------------------------------------------------------
+LIMITE=$(curl -sS -o /dev/null -D - "${BASE}/products" "${AUTH[@]}" \
+  | grep -i '^x-ratelimit-limit' | tr -d '\r' | awk '{print $2}')
+check "el limite de tasa por usuario esta activo" "300" "${LIMITE}"
+
+check "HTTPS responde 200" "200" "$(curl -k -sS -o /dev/null -w '%{http_code}' https://localhost:3443/)"
+check "HTTP redirige a HTTPS" "308" "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3080/)"
+check "HTTPS anuncia HSTS" "1" \
+  "$(curl -k -sS -o /dev/null -D - https://localhost:3443/ | grep -ci 'strict-transport-security')"
 
 # ---------------------------------------------------------------------------
 echo

@@ -115,6 +115,19 @@ services:
       # Llave RSA para firmar los JWT. Si se deja vacia, IAM genera una efimera y
       # TODAS las sesiones se invalidan al reiniciar el servicio.
       KUBO_JWT_PRIVATE_KEY: ${KUBO_JWT_PRIVATE_KEY:-}
+      # Bloqueo de cuenta por intentos fallidos (P-11).
+      KUBO_AUTH_MAX_FAILED_ATTEMPTS: ${KUBO_AUTH_MAX_FAILED_ATTEMPTS:-5}
+      KUBO_AUTH_LOCK_MINUTES: ${KUBO_AUTH_LOCK_MINUTES:-15}
+      KUBO_AUTH_RESET_TOKEN_MINUTES: ${KUBO_AUTH_RESET_TOKEN_MINUTES:-30}
+      # Correo: `log` (buzon de demostracion) o `smtp` (servidor real, P-04).
+      KUBO_MAIL_TRANSPORT: ${KUBO_MAIL_TRANSPORT:-log}
+      KUBO_MAIL_FROM: ${KUBO_MAIL_FROM:-no-responder@kubo.local}
+      KUBO_RESET_URL_BASE: ${KUBO_RESET_URL_BASE:-http://localhost:3000/recuperar}
+      KUBO_SMTP_HOST: ${KUBO_SMTP_HOST:-}
+      KUBO_SMTP_PORT: ${KUBO_SMTP_PORT:-587}
+      KUBO_SMTP_USERNAME: ${KUBO_SMTP_USERNAME:-}
+      KUBO_SMTP_PASSWORD: ${KUBO_SMTP_PASSWORD:-}
+      KUBO_SMTP_STARTTLS: ${KUBO_SMTP_STARTTLS:-true}
       JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
     ports:
       - "${KUBO_IAM_PORT:-9081}:8081"
@@ -241,6 +254,10 @@ services:
       KUBO_JWKS_URI: http://kubo-iam:8081/api/v1/auth/.well-known/jwks.json
       KUBO_RATE_LIMIT_PER_MINUTE: "600"
       KUBO_AUTH_RATE_LIMIT_PER_MINUTE: "40"
+      # Limite por usuario (P-31): una cuenta comprometida no consume la cuota del negocio.
+      KUBO_USER_RATE_LIMIT_PER_MINUTE: "300"
+      # Dias de vigencia de la cookie httpOnly del refresh token (P-03).
+      KUBO_REFRESH_COOKIE_DAYS: "7"
     ports:
       - "${KUBO_GATEWAY_PORT:-9080}:8080"
     depends_on:
@@ -255,6 +272,35 @@ services:
       retries: 20
       start_period: 30s
     mem_limit: 384m
+    networks: [kubo-net]
+
+  # ---------------------------------------------------------------------------
+  # TLS: Caddy termina HTTPS en el local y redirige HTTP (P-27)
+  # ---------------------------------------------------------------------------
+  kubo-tls:
+    image: caddy:2-alpine
+    container_name: kubo-tls
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      KUBO_TLS_DOMAIN: ${KUBO_TLS_DOMAIN:-localhost}
+    ports:
+      - "${KUBO_TLS_HTTP_PORT:-3080}:80"
+      - "${KUBO_TLS_HTTPS_PORT:-3443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      kubo-web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 96m
     networks: [kubo-net]
 
   # ---------------------------------------------------------------------------
@@ -284,6 +330,8 @@ volumes:
   pgdata:
   mongodata:
   rabbitdata:
+  caddydata:
+  caddyconfig:
 
 networks:
   kubo-net:
