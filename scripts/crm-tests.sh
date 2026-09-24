@@ -56,13 +56,14 @@ if [[ "${existe}" != "1" ]]; then
     -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER} ENCODING 'UTF8'"
 fi
 
-# Se montan `test/`, `db/` y `config/` para usar el arbol de trabajo, no lo que
-# quedo horneado en la imagen (que se construye en produccion).
+# Se montan `test/`, `app/`, `db/` y `config/` para usar el arbol de trabajo, no
+# lo que quedo horneado en la imagen (que se construye en produccion).
 echo "[crm-tests] pruebas de integracion contra PostgreSQL real"
 docker run --rm --network "${RED}" \
   -e RAILS_ENV=test \
   -e TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}" \
   -v "${ROOT}/kubo-crm/test:/app/test:ro" \
+  -v "${ROOT}/kubo-crm/app:/app/app:ro" \
   -v "${ROOT}/kubo-crm/db:/app/db:ro" \
   -v "${ROOT}/kubo-crm/config:/app/config:ro" \
   --entrypoint bash "${IMAGEN}" -c \
