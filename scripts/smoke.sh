@@ -54,6 +54,20 @@ check_positivo() {
   fi
 }
 
+COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/docker-compose.yml"
+
+# El humo hace ~20 peticiones de autenticacion; para que la prueba sea
+# idempotente (repetible en el mismo minuto) se eleva el limite de autenticacion
+# solo durante la corrida y se restaura al terminar. El limite real (40/min) es
+# una defensa contra fuerza bruta que se configura en el compose; el humo no lo
+# debilita en operacion normal.
+restaurar_limite() {
+  KUBO_AUTH_RATE_LIMIT_PER_MINUTE=40 docker compose -f "${COMPOSE_FILE}" up -d kubo-gateway >/dev/null 2>&1
+}
+KUBO_AUTH_RATE_LIMIT_PER_MINUTE=1000000 docker compose -f "${COMPOSE_FILE}" up -d kubo-gateway >/dev/null 2>&1
+trap restaurar_limite EXIT
+sleep 5
+
 echo
 echo "Kubo · prueba de humo end-to-end"
 echo "================================================================"
@@ -301,6 +315,15 @@ check "el stock baja a 7 unidades" "7" "${STOCK_FINAL}"
 
 KARDEX=$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" | jq '.total')
 check "el kardex registra 2 movimientos" "2" "${KARDEX}"
+
+# Importacion de catalogo (P-24): una fila nueva entra con su stock por kardex.
+CSV_IMPORT="sku,nombre,precio,costo,stock,stock_minimo
+IMP-SMOKE-$(date +%s),Producto Importado,5000,3000,7,2"
+IMPORTADO=$(curl -sS -X POST "${BASE}/products/import" "${AUTH[@]}" \
+  -d "$(jq -nc --arg csv "${CSV_IMPORT}" '{csv: $csv}')")
+check "la importacion crea productos desde CSV" "1" "$(echo "${IMPORTADO}" | jq -r '.data.created // empty')"
+check "el producto importado entra con su stock por kardex" "7" \
+  "$(curl -sS -G "${BASE}/products" --data-urlencode "q=Producto Importado" "${AUTH[@]}" | jq -r '.data[0].stock // empty')"
 
 PAGINA=$(curl -sS "${BASE}/products?limit=1" "${AUTH[@]}" | jq -c 'select((.data | length) == 1 and .total >= 2)')
 check "la paginacion respeta el limite y reporta el total real" "true" \

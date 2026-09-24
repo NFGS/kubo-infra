@@ -261,7 +261,9 @@ services:
       KUBO_ANALYTICS_URL: http://kubo-analytics:8084
       KUBO_JWKS_URI: http://kubo-iam:8081/api/v1/auth/.well-known/jwks.json
       KUBO_RATE_LIMIT_PER_MINUTE: "600"
-      KUBO_AUTH_RATE_LIMIT_PER_MINUTE: "40"
+      # Configurable para que la prueba de humo pueda elevarlo durante su corrida
+      # (hace ~20 peticiones de autenticacion y debe poder repetirse sin fallar).
+      KUBO_AUTH_RATE_LIMIT_PER_MINUTE: ${KUBO_AUTH_RATE_LIMIT_PER_MINUTE:-40}
       # Limite por usuario (P-31): una cuenta comprometida no consume la cuota del negocio.
       # Configurable para que `make load` lo eleve solo durante la prueba de carga.
       KUBO_USER_RATE_LIMIT_PER_MINUTE: ${KUBO_USER_RATE_LIMIT_PER_MINUTE:-300}
