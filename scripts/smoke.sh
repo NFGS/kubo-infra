@@ -395,6 +395,27 @@ check "la vista compuesta no reporta vistas caidas" "0" "$(echo "${COMPUESTA}" |
 check "la zona horaria del negocio viaja en la respuesta" "America/Bogota" \
   "$(curl -sS "${BASE}/sales/stats" "${AUTH[@]}" | jq -r '.data.timezone // "sin zona"')"
 
+# Paquetes de configuracion por vertical (P-17, ADR-0013): catalogo, paquete
+# activo y cambio de vertical, que aplica al siguiente inicio de sesion porque
+# el vertical viaja en el token.
+check "el catalogo ofrece los cuatro verticales" "4" \
+  "$(curl -sS "${BASE}/packs" "${AUTH[@]}" | jq -r '.data | length')"
+check "el negocio de la demo esta en retail" "retail" \
+  "$(curl -sS "${BASE}/packs/current" "${AUTH[@]}" | jq -r '.data.key // empty')"
+check "el paquete define la terminologia del catalogo" "Producto" \
+  "$(curl -sS "${BASE}/packs/current" "${AUTH[@]}" | jq -r '.data.product_label // empty')"
+check "un vertical desconocido se rechaza" "INVALID_VERTICAL" \
+  "$(curl -sS -X PATCH "${BASE}/tenants/me" "${AUTH[@]}" -d '{"vertical":"inventado"}' | jq -r '.code // "OK"')"
+
+curl -sS -o /dev/null -X PATCH "${BASE}/tenants/me" "${AUTH[@]}" -d '{"vertical":"restaurantes"}'
+TOKEN_REST=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d '{"email":"admin@kubo.local","password":"Admin123!"}' | jq -r '.accessToken // empty')
+check "el cambio de vertical aplica al nuevo token" "Platillo" \
+  "$(curl -sS "${BASE}/packs/current" -H "Authorization: Bearer ${TOKEN_REST}" \
+     | jq -r '.data.product_label // empty')"
+# Se restaura el vertical de la demostracion.
+curl -sS -o /dev/null -X PATCH "${BASE}/tenants/me" "${AUTH[@]}" -d '{"vertical":"retail"}'
+
 # ADR-0012: el ERP respeta la zona horaria del negocio que propaga el gateway y
 # rechaza una zona desconocida en lugar de caer a UTC en silencio.
 TZ_DIRECTA=$(curl -sS http://localhost:9083/api/v1/sales/stats \
