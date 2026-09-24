@@ -59,7 +59,7 @@ echo "Kubo · prueba de humo end-to-end"
 echo "================================================================"
 
 # ---------------------------------------------------------------------------
-echo "[1/10] Salud de los servicios"
+echo "[1/11] Salud de los servicios"
 # ---------------------------------------------------------------------------
 for service in "kubo-gateway:9080" "kubo-iam:9081" "kubo-crm:9082" "kubo-erp:9083" "kubo-analytics:9084"; do
   name="${service%%:*}"
@@ -70,7 +70,7 @@ done
 
 # ---------------------------------------------------------------------------
 echo
-echo "[2/10] Autenticacion y cookie httpOnly"
+echo "[2/11] Autenticacion y cookie httpOnly"
 # ---------------------------------------------------------------------------
 # El humo hace ~17 peticiones de autenticacion. Si se ejecuta varias veces en el
 # mismo minuto, la ventana de 40/min por IP puede estar saturada: se espera a que
@@ -143,7 +143,7 @@ check "tras cerrar sesion el refresco responde 401" "401" \
 
 # ---------------------------------------------------------------------------
 echo
-echo "[3/10] Control de acceso, auditoria y bloqueo de cuenta"
+echo "[3/11] Control de acceso, auditoria y bloqueo de cuenta"
 # ---------------------------------------------------------------------------
 SIN_TOKEN=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/customers")
 check "sin token responde 401" "401" "${SIN_TOKEN}"
@@ -191,7 +191,7 @@ check "el reuso de token queda en la auditoria" "true" \
 
 # ---------------------------------------------------------------------------
 echo
-echo "[4/10] Clientes, cifrado y RLS"
+echo "[4/11] Clientes, cifrado y RLS"
 # ---------------------------------------------------------------------------
 DOCUMENTO="1099$(date +%H%M%S)"
 CLIENTE=$(curl -sS -X POST "${BASE}/customers" "${AUTH[@]}" \
@@ -241,7 +241,7 @@ check_positivo "RLS en CRM: con el negocio en contexto hay filas" "${CRM_CON}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[5/10] Inventario, venta y outbox transaccional"
+echo "[5/11] Inventario, venta y outbox transaccional"
 # ---------------------------------------------------------------------------
 SKU="SMOKE-$(date +%H%M%S)"
 PRODUCTO=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
@@ -316,7 +316,7 @@ check_positivo "RLS en ERP: con el negocio en contexto hay filas" "${ERP_CON}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[6/10] Evento de venta y tablero (RabbitMQ + MongoDB)"
+echo "[6/11] Evento de venta y tablero (RabbitMQ + MongoDB)"
 # ---------------------------------------------------------------------------
 PROYECTADA="no"
 for _ in $(seq 1 15); do
@@ -348,7 +348,7 @@ check "la bandeja de salida no tiene eventos fallidos" "0" "${OUTBOX_FALLIDOS}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[7/10] Anulacion de venta (devolucion de inventario)"
+echo "[7/11] Anulacion de venta (devolucion de inventario)"
 # ---------------------------------------------------------------------------
 ANULADA=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/void" "${AUTH[@]}" | jq -r '.data.status')
 check "la venta queda anulada" "VOIDED" "${ANULADA}"
@@ -358,7 +358,7 @@ check "el inventario vuelve a 10 unidades" "10" "${STOCK_DEVUELTO}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[8/10] Aislamiento entre negocios"
+echo "[8/11] Aislamiento entre negocios"
 # ---------------------------------------------------------------------------
 OTRO=$(curl -sS -X POST "${BASE}/auth/register" -H 'Content-Type: application/json' \
   -d "{\"tenantName\":\"Negocio Aislado $(date +%H%M%S)\",\"fullName\":\"Otro Dueno\",\"email\":\"otro$(date +%H%M%S)@kubo.local\",\"password\":\"OtraClave123!\"}")
@@ -380,7 +380,7 @@ check "RLS en IAM: sin contexto de negocio no hay filas" "0" "${IAM_SIN}"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[9/10] Recuperacion de contrasena"
+echo "[9/11] Recuperacion de contrasena"
 # ---------------------------------------------------------------------------
 check "solicitar el enlace responde 204" "204" \
   "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/auth/forgot-password" \
@@ -413,7 +413,38 @@ check "no se revela si el correo existe" "204" \
 
 # ---------------------------------------------------------------------------
 echo
-echo "[10/10] Limite de tasa, TLS y observabilidad"
+echo "[10/11] Compras y proveedores"
+# ---------------------------------------------------------------------------
+PROVEEDOR=$(curl -sS -X POST "${BASE}/suppliers" "${AUTH[@]}" \
+  -d "{\"name\":\"Proveedor Prueba Humo $(date +%s)\",\"tax_id\":\"900$(date +%H%M%S)\",\"phone\":\"3100000000\"}")
+PROVEEDOR_ID=$(echo "${PROVEEDOR}" | jq -r '.data.id // empty')
+check "proveedor creado" "true" "$([[ -n "${PROVEEDOR_ID}" ]] && echo true || echo false)"
+
+COMPRA=$(curl -sS -X POST "${BASE}/purchases" "${AUTH[@]}" \
+  -d "{\"supplier_id\":\"${PROVEEDOR_ID}\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":5,\"unit_cost\":5000}]}")
+COMPRA_ID=$(echo "${COMPRA}" | jq -r '.data.id // empty')
+check "compra registrada por 25000.00" "25000.00" "$(echo "${COMPRA}" | jq -r '.data.total // empty')"
+check "el IVA de la compra se desagrega" "3991.60" "$(echo "${COMPRA}" | jq -r '.data.tax // empty')"
+
+check "la compra suma 5 unidades al inventario" "15" \
+  "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')"
+check "el costo se actualiza al valor sin IVA" "4201.68" \
+  "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.cost')"
+check "el kardex registra el movimiento de compra" "1" \
+  "$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" \
+     | jq '[.data[] | select(.reference_type == "PURCHASE")] | length')"
+
+check "la compra queda anulada" "VOIDED" \
+  "$(curl -sS -X POST "${BASE}/purchases/${COMPRA_ID}/void" "${AUTH[@]}" | jq -r '.data.status')"
+check "el inventario vuelve a 10 unidades" "10" \
+  "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')"
+
+check "RLS en compras: sin contexto de negocio no hay filas" "0" \
+  "$(docker exec kubo-postgres psql -U kubo_erp -d kubo_erp -tAc "select count(*) from purchases" 2>/dev/null | tr -d '[:space:]')"
+
+# ---------------------------------------------------------------------------
+echo
+echo "[11/11] Limite de tasa, TLS y observabilidad"
 # ---------------------------------------------------------------------------
 LIMITE=$(curl -sS -o /dev/null -D - "${BASE}/products" "${AUTH[@]}" \
   | grep -i '^x-ratelimit-limit' | tr -d '\r' | awk '{print $2}')
