@@ -210,6 +210,14 @@ check "un vendedor no puede crear usuarios" "403" \
      -H 'Content-Type: application/json' \
      -d "{\"fullName\":\"X\",\"email\":\"x$(date +%s)@kubo.local\",\"password\":\"Clave1234!\",\"role\":\"SELLER\"}")"
 
+# Un administrador no puede dejar al negocio sin administrador: ni degradarse
+# ni deshabilitarse a si mismo (antes quedaba bloqueado sin recuperacion).
+YO_ID=$(curl -sS "${BASE}/auth/me" "${AUTH[@]}" | jq -r '.id // empty')
+AUTO_DEGRADE=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "${BASE}/users/${YO_ID}" "${AUTH[@]}" -d '{"role":"SELLER"}')
+check "un administrador no puede degradarse a si mismo" "409" "${AUTO_DEGRADE}"
+AUTO_BAJA=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "${BASE}/users/${YO_ID}" "${AUTH[@]}" -d '{"status":"DISABLED"}')
+check "un administrador no puede deshabilitarse a si mismo" "409" "${AUTO_BAJA}"
+
 USUARIO_ID=$(echo "${CREADO}" | jq -r '.id')
 curl -sS -o /dev/null -X PATCH "${BASE}/users/${USUARIO_ID}" "${AUTH[@]}" -d '{"status":"DISABLED"}'
 check "un usuario deshabilitado no puede ingresar" "USER_DISABLED" \
@@ -386,6 +394,42 @@ check "la vista compuesta del tablero trae las 7 vistas en una peticion" "7" "${
 check "la vista compuesta no reporta vistas caidas" "0" "$(echo "${COMPUESTA}" | jq -r '.unavailable // [] | length')"
 check "la zona horaria del negocio viaja en la respuesta" "America/Bogota" \
   "$(curl -sS "${BASE}/sales/stats" "${AUTH[@]}" | jq -r '.data.timezone // "sin zona"')"
+
+# Reportes exportables (P-21): CSV de ventas e inventario; el filtro de fechas
+# se interpreta en la zona horaria del negocio.
+VENTA_NUMERO=$(echo "${VENTA}" | jq -r '.data.number // empty')
+REPORTE_VENTAS=$(curl -sS "${BASE}/reports/sales.csv" "${AUTH[@]}")
+check_positivo "el reporte de ventas incluye la venta recien creada" \
+  "$(echo "${REPORTE_VENTAS}" | grep -c "${VENTA_NUMERO}")"
+check_positivo "el reporte de inventario incluye el producto" \
+  "$(curl -sS "${BASE}/reports/inventory.csv" "${AUTH[@]}" | grep -c "${SKU}")"
+HOY_NEGOCIO=$(TZ=America/Bogota date +%F)
+check_positivo "el filtro de fechas usa la zona del negocio" \
+  "$(curl -sS "${BASE}/reports/sales.csv?from=${HOY_NEGOCIO}&to=${HOY_NEGOCIO}" "${AUTH[@]}" | grep -c "${VENTA_NUMERO}")"
+check "una fecha invalida responde 400" "400" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/reports/sales.csv?from=no-es-fecha" "${AUTH[@]}")"
+
+# El cliente se denormaliza en la venta: si viene cliente, el nombre es
+# obligatorio (fail-fast) y el CSV no debe ejecutar formulas al abrirlo.
+SKU_FORMULA="FORMULA-$(date +%s)"
+PRODUCTO_FORMULA=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
+  -d "{\"sku\":\"${SKU_FORMULA}\",\"name\":\"Producto Formula\",\"price\":5000,\"cost\":3000,\"min_stock\":1}" \
+  | jq -r '.data.id // empty')
+curl -sS -o /dev/null -X POST "${BASE}/products/${PRODUCTO_FORMULA}/stock" "${AUTH[@]}" \
+  -d '{"kind":"IN","quantity":5,"reason":"Prueba de reportes"}'
+CLIENTE_FORMULA=$(curl -sS -X POST "${BASE}/customers" "${AUTH[@]}" \
+  -d "{\"name\":\"=SUM(1+1)\",\"doc_type\":\"CC\",\"doc_number\":\"FORMULA$(date +%s)\"}" \
+  | jq -r '.data.id // empty')
+VENTA_FORMULA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${PRODUCTO_FORMULA}\",\"quantity\":1}],\"payment_method\":\"CARD\",\"customer_id\":\"${CLIENTE_FORMULA}\",\"customer_name\":\"=SUM(1+1)\"}")
+check "la venta conserva el nombre del cliente" "=SUM(1+1)" \
+  "$(echo "${VENTA_FORMULA}" | jq -r '.data.customer_name // empty')"
+check_positivo "el CSV neutraliza formulas del cliente" \
+  "$(curl -sS "${BASE}/reports/sales.csv" "${AUTH[@]}" | grep -c "'=SUM(1+1)")"
+SIN_NOMBRE=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${PRODUCTO_FORMULA}\",\"quantity\":1}],\"payment_method\":\"CARD\",\"customer_id\":\"${CLIENTE_FORMULA}\"}")
+check "vender con cliente sin nombre se rechaza" "CUSTOMER_NAME_REQUIRED" \
+  "$(echo "${SIN_NOMBRE}" | jq -r '.code // "OK"')"
 
 OUTBOX_FALLIDOS=$(curl -sS http://localhost:9083/api/v1/health | jq -r '.outbox.failed // "?"')
 check "la bandeja de salida no tiene eventos fallidos" "0" "${OUTBOX_FALLIDOS}"
