@@ -344,6 +344,33 @@ curl -sS -X POST "${BASE}/products/${PRODUCTO_ID}/stock" "${AUTH[@]}" \
 STOCK_INICIAL=$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')
 check "entrada de inventario deja 10 unidades" "10" "${STOCK_INICIAL}"
 
+# Multi-bodega (P-22, ADR-0016): segunda bodega, transferencia atomica y kardex
+# por bodega. La mercancia no sale del negocio: el total del producto no cambia.
+BODEGAS=$(curl -sS "${BASE}/warehouses" "${AUTH[@]}")
+DEFECTO_ID=$(echo "${BODEGAS}" | jq -r '.data[] | select(.is_default) | .id' | head -1)
+BODEGA_ID=$(echo "${BODEGAS}" | jq -r '.data[] | select(.is_default == false) | .id' | head -1)
+if [[ -z "${BODEGA_ID}" ]]; then
+  BODEGA=$(curl -sS -X POST "${BASE}/warehouses" "${AUTH[@]}" -d '{"name":"Bodega norte"}')
+  BODEGA_ID=$(echo "${BODEGA}" | jq -r '.data.id // empty')
+fi
+check "el negocio tiene su bodega por defecto y una segunda" "true" \
+  "$([[ -n "${DEFECTO_ID}" && -n "${BODEGA_ID}" ]] && echo true || echo false)"
+
+TRANSFERENCIA=$(curl -sS -X POST "${BASE}/transfers" "${AUTH[@]}" \
+  -d "{\"from_warehouse_id\":\"${DEFECTO_ID}\",\"to_warehouse_id\":\"${BODEGA_ID}\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":2}]}")
+check "la transferencia mueve el producto entre bodegas" "2" \
+  "$(echo "${TRANSFERENCIA}" | jq -r '.data.items[0].quantity // empty')"
+check "el total del producto no cambia con la transferencia" "10" \
+  "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')"
+check "el kardex registra los dos movimientos de la transferencia" "2" \
+  "$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" \
+     | jq '[.data[] | select(.reference_type == "TRANSFER")] | length')"
+check "transferir mas de lo disponible se rechaza" "409" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/transfers" "${AUTH[@]}" \
+     -d "{\"from_warehouse_id\":\"${DEFECTO_ID}\",\"to_warehouse_id\":\"${BODEGA_ID}\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":999}]}")"
+check "la bodega por defecto no se puede borrar" "409" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${BASE}/warehouses/${DEFECTO_ID}" "${AUTH[@]}")"
+
 VENTA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
   -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":3}],\"payment_method\":\"CASH\"}")
 VENTA_ID=$(echo "${VENTA}" | jq -r '.data.id // empty')
@@ -361,8 +388,13 @@ check "el IVA desagregado es 5700.00" "5700.00" "$(echo "${VENTA}" | jq -r '.dat
 STOCK_FINAL=$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')
 check "el stock baja a 7 unidades" "7" "${STOCK_FINAL}"
 
-KARDEX=$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" | jq '.total')
-check "el kardex registra 2 movimientos" "2" "${KARDEX}"
+# El kardex del producto ya trae la entrada inicial, la salida de la venta y los
+# movimientos de la transferencia: se comprueba cada uno por su referencia.
+KARDEX=$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}")
+check "el kardex registra la salida de la venta" "1" \
+  "$(echo "${KARDEX}" | jq '[.data[] | select(.reference_type == "SALE")] | length')"
+check_positivo "el kardex conserva la entrada inicial" \
+  "$(echo "${KARDEX}" | jq '[.data[] | select(.kind == "IN")] | length')"
 
 # Importacion de catalogo (P-24): una fila nueva entra con su stock por kardex.
 CSV_IMPORT="sku,nombre,precio,costo,stock,stock_minimo
