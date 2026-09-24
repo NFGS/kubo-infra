@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Kubo — stack de observabilidad (P-07), opcional.
+#
+#   make observability
+#
+# Agrega Tempo (almacen de trazas) y Grafana (consulta) al collector, que pasa
+# a exportar a Tempo. No forma parte de la instalacion por defecto: un negocio
+# de barrio no necesita el stack visual, y mantenerlo fuera conserva el consumo
+# bajo del equipo del local.
+# ---------------------------------------------------------------------------
+
+services:
+  kubo-otel:
+    command: ["--config=/etc/otel/collector-observability.yaml"]
+    volumes:
+      - ./otel/collector-observability.yaml:/etc/otel/collector-observability.yaml:ro
+
+  kubo-tempo:
+    image: grafana/tempo:2.6.1
+    container_name: kubo-tempo
+    profiles: [observability]
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempodata:/var/tempo
+    mem_limit: 256m
+    networks: [kubo-net]
+
+  kubo-grafana:
+    image: grafana/grafana:11.3.0
+    container_name: kubo-grafana
+    profiles: [observability]
+    restart: unless-stopped
+    ports:
+      - "${KUBO_GRAFANA_PORT:-3001}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${KUBO_GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${KUBO_GRAFANA_PASSWORD:-kubo_admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - grafanadata:/var/lib/grafana
+    mem_limit: 256m
+    networks: [kubo-net]
+
+volumes:
+  tempodata:
+  grafanadata:

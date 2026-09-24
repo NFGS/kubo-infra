@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Kubo — OpenTelemetry Collector (P-07), con backend visual.
+#
+# Variante usada por `make observability`: ademas del log, exporta las trazas a
+# Tempo, que Grafana consulta como datasource.
+# ---------------------------------------------------------------------------
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 2s
+
+exporters:
+  debug:
+    verbosity: basic
+  otlp/tempo:
+    endpoint: kubo-tempo:4317
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp/tempo]

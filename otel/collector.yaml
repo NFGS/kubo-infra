@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# Kubo — OpenTelemetry Collector (P-07), configuracion base.
+#
+# Recibe trazas OTLP de los cinco servicios (gRPC 4317 / HTTP 4318) y las
+# escribe en su propio log: `docker logs kubo-otel` es la prueba de que la
+# instrumentacion funciona sin levantar el stack visual.
+#
+# Para ver las trazas en Grafana: `make observability` usa
+# collector-observability.yaml, que ademas exporta a Tempo.
+# ---------------------------------------------------------------------------
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 2s
+
+extensions:
+  # Sonda de salud del collector: el humo y el operador la consultan en 13133.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+exporters:
+  debug:
+    verbosity: normal
+
+service:
+  telemetry:
+    logs:
+      # `info` para que el exportador debug imprima los spans recibidos: es la
+      # verificacion base de que la instrumentacion funciona.
+      level: info
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

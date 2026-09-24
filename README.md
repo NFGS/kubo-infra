@@ -7,13 +7,13 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 
 | Ruta | Descripcion |
 | --- | --- |
-| `docker-compose.yml` | Define los 11 contenedores (4 microservicios + gateway + web + TLS + Postgres + Mongo + RabbitMQ + Redis) |
+| `docker-compose.yml` | Define los 12 contenedores (4 microservicios + gateway + web + TLS + OTel + Postgres + Mongo + RabbitMQ + Redis) |
 | `.env.example` | Plantilla de variables de entorno |
 | `caddy/Caddyfile` | Terminacion TLS del local (HTTPS, redireccion y HSTS) |
 | `systemd/kubo-backup.*` | Respaldo diario programado (03:30) |
 | `scripts/init-db.sh` | Crea una base de datos y un rol aislado por microservicio |
 | `scripts/seed.sh` | Carga datos de demostracion (clientes, productos, ventas) |
-| `scripts/smoke.sh` | Prueba el flujo completo end-to-end (73 comprobaciones) |
+| `scripts/smoke.sh` | Prueba el flujo completo end-to-end (78 comprobaciones) |
 | `scripts/bus-drill.sh` | Simulacro: caida del bus sin perdida de eventos (outbox) |
 | `scripts/backup.sh` | Respaldo de PostgreSQL, MongoDB y la configuracion |
 | `scripts/restore-drill.sh` | Restaura en bases de prueba y compara filas |
@@ -26,6 +26,8 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | --- | --- | --- |
 | PWA | 3000 | 80 |
 | TLS (Caddy): HTTPS · HTTP | 3443 · 3080 | 443 · 80 |
+| OTel collector: gRPC · HTTP · salud | 4317 · 4318 · 13133 | 4317 · 4318 · 13133 |
+| Grafana (perfil `observability`) | 3001 | 3000 |
 | API Gateway | 9080 | 8080 |
 | IAM | 9081 | 8081 |
 | CRM | 9082 | 8082 |
@@ -53,9 +55,32 @@ openssl rand -hex 32   # KUBO_BLIND_INDEX_KEY
 
 ```bash
 make up             # desde la raiz del workspace
-make smoke          # 73 comprobaciones end-to-end
+make smoke          # 78 comprobaciones end-to-end
 make bus-drill      # caida del bus sin perdida de eventos
 make backup         # respaldo de bases y configuracion
 make restore-drill  # simulacro de restauracion cronometrado
 make down
 ```
+
+## Observabilidad (Fase 2)
+
+| Ruta | Descripcion |
+| --- | --- |
+| `otel/collector.yaml` | Collector OTLP base: recibe trazas de los cinco servicios y las escribe en su log |
+| `otel/collector-observability.yaml` | Variante que además exporta a Tempo |
+| `docker-compose.observability.yml` | Perfil `observability`: Tempo + Grafana con datasource provisionado |
+
+```bash
+make observability   # Grafana en http://localhost:3001 (admin / kubo_admin)
+docker logs kubo-otel  # las trazas crudas, sin stack visual
+```
+
+## Calidad (Fase 2)
+
+| Ruta | Descripcion |
+| --- | --- |
+| `scripts/secret-scan.sh` | Escaneo de secretos sobre archivos versionados |
+| `scripts/ci-local.sh` | Gate completo: secretos, suites, contratos, humo y E2E (`make ci`) |
+| `scripts/erp-tests.sh` | Pruebas puras del ERP en contenedor aparte |
+| `scripts/bus-drill.sh` | Simulacro de caída del bus |
+| `scripts/backup.sh` · `scripts/restore-drill.sh` | Respaldo y simulacro cronometrado |

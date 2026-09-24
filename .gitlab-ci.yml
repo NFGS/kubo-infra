@@ -1,0 +1,37 @@
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+stages: [validate, integration]
+
+# Valida la orquestacion: compose bien formado y las nueve imagenes construyen.
+infra:build:
+  stage: validate
+  image: docker:27
+  services:
+    - name: docker:27-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+  script:
+    - apk add --no-cache bash make
+    - docker compose -f docker-compose.yml config --quiet
+    - docker compose -f docker-compose.yml build
+  timeout: 1h
+
+# Gate end-to-end completo. Requiere un runner con acceso a los puertos del
+# host donde corre la pila (runner propio, como el equipo del negocio). Se
+# activa definiendo KUBO_E2E_RUNNER; en local lo cubre `make ci`.
+infra:e2e:
+  stage: integration
+  image: alpine:3.20
+  rules:
+    - if: $KUBO_E2E_RUNNER
+  script:
+    - apk add --no-cache bash curl jq docker-cli make
+    - make smoke
+    - make bus-drill
+    - make restore-drill
+  timeout: 1h

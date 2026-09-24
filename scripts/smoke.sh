@@ -72,8 +72,19 @@ done
 echo
 echo "[2/10] Autenticacion y cookie httpOnly"
 # ---------------------------------------------------------------------------
-LOGIN=$(curl -sS -c "${JAR1}" -D "${HDR1}" -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+# El humo hace ~17 peticiones de autenticacion. Si se ejecuta varias veces en el
+# mismo minuto, la ventana de 40/min por IP puede estar saturada: se espera a que
+# se libere en lugar de fallar (la prueba debe poder repetirse).
+for intento in 1 2 3; do
+  LOGIN=$(curl -sS -c "${JAR1}" -D "${HDR1}" -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+  if [[ "$(echo "${LOGIN}" | jq -r '.code // empty')" == "RATE_LIMIT_EXCEEDED" ]]; then
+    echo "  (limite de autenticacion alcanzado; esperando 60 s antes del intento $((intento + 1)))"
+    sleep 60
+  else
+    break
+  fi
+done
 TOKEN=$(echo "${LOGIN}" | jq -r '.accessToken // empty')
 TENANT=$(echo "${LOGIN}" | jq -r '.user.tenantId // empty')
 
@@ -142,6 +153,10 @@ check "token falsificado responde 401" "401" "${FALSO}"
 
 SUPLANTACION=$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-User-Id: 00000000-0000-0000-0000-000000000000' "${BASE}/customers")
 check "cabecera de identidad inyectada es ignorada" "401" "${SUPLANTACION}"
+
+# Defensa en profundidad: una cabecera de negocio malformada no llega al motor.
+check "una cabecera de negocio malformada se rechaza con 400" "400" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:9083/api/v1/products -H 'X-Tenant-Id: no-es-uuid')"
 
 # Bloqueo de cuenta (P-11): el usuario se crea aqui y se reutiliza en el bloque 9.
 SUFIJO=$(date +%s)
@@ -265,6 +280,12 @@ check "el stock baja a 7 unidades" "7" "${STOCK_FINAL}"
 
 KARDEX=$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" | jq '.total')
 check "el kardex registra 2 movimientos" "2" "${KARDEX}"
+
+PAGINA=$(curl -sS "${BASE}/products?limit=1" "${AUTH[@]}" | jq -c 'select((.data | length) == 1 and .total >= 2)')
+check "la paginacion respeta el limite y reporta el total real" "true" \
+  "$([[ -n "${PAGINA}" ]] && echo true || echo false)"
+check "el servidor acota el tamano de pagina" "200" \
+  "$(curl -sS "${BASE}/products?limit=9999" "${AUTH[@]}" | jq -r '.limit')"
 
 SOBREVENTA=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/sales" "${AUTH[@]}" \
   -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":99}],\"payment_method\":\"CASH\"}")
@@ -392,7 +413,7 @@ check "no se revela si el correo existe" "204" \
 
 # ---------------------------------------------------------------------------
 echo
-echo "[10/10] Limite de tasa por usuario y TLS"
+echo "[10/10] Limite de tasa, TLS y observabilidad"
 # ---------------------------------------------------------------------------
 LIMITE=$(curl -sS -o /dev/null -D - "${BASE}/products" "${AUTH[@]}" \
   | grep -i '^x-ratelimit-limit' | tr -d '\r' | awk '{print $2}')
@@ -402,6 +423,11 @@ check "HTTPS responde 200" "200" "$(curl -k -sS -o /dev/null -w '%{http_code}' h
 check "HTTP redirige a HTTPS" "308" "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3080/)"
 check "HTTPS anuncia HSTS" "1" \
   "$(curl -k -sS -o /dev/null -D - https://localhost:3443/ | grep -ci 'strict-transport-security')"
+
+check "el collector de trazas responde su sonda de salud" "200" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:13133/ 2>/dev/null || echo 000)"
+check_positivo "el collector recibio trazas de los servicios" \
+  "$(docker logs kubo-otel --since 10m 2>&1 | grep -c 'service.name=kubo-')"
 
 # ---------------------------------------------------------------------------
 echo
