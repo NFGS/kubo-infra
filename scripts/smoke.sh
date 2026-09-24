@@ -395,6 +395,16 @@ check "la vista compuesta no reporta vistas caidas" "0" "$(echo "${COMPUESTA}" |
 check "la zona horaria del negocio viaja en la respuesta" "America/Bogota" \
   "$(curl -sS "${BASE}/sales/stats" "${AUTH[@]}" | jq -r '.data.timezone // "sin zona"')"
 
+# ADR-0012: el ERP respeta la zona horaria del negocio que propaga el gateway y
+# rechaza una zona desconocida en lugar de caer a UTC en silencio.
+TZ_DIRECTA=$(curl -sS http://localhost:9083/api/v1/sales/stats \
+  -H "x-tenant-id: ${TENANT}" -H "x-user-id: ${TENANT}" -H "x-tenant-timezone: America/Mexico_City" \
+  | jq -r '.data.timezone // "sin zona"')
+check "el erp respeta la zona horaria del negocio" "America/Mexico_City" "${TZ_DIRECTA}"
+check "una zona horaria desconocida se rechaza" "400" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:9083/api/v1/sales/stats \
+     -H "x-tenant-id: ${TENANT}" -H "x-user-id: ${TENANT}" -H 'x-tenant-timezone: Marte/Olympus')"
+
 # Reportes exportables (P-21): CSV de ventas e inventario; el filtro de fechas
 # se interpreta en la zona horaria del negocio.
 VENTA_NUMERO=$(echo "${VENTA}" | jq -r '.data.number // empty')
