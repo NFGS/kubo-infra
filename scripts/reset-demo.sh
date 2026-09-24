@@ -40,9 +40,10 @@ docker exec kubo-postgres psql -U kubo_root -d kubo_crm -q -c "DELETE FROM custo
 
 # --- ERP: ventas, kardex y catalogo ------------------------------------------
 docker exec kubo-postgres psql -U kubo_root -d kubo_erp -q -c "
-  TRUNCATE sale_items, sales, stock_movements, products CASCADE;
+  TRUNCATE purchase_items, purchases, suppliers, sale_items, sales, stock_movements, products CASCADE;
   TRUNCATE outbox_events;
-" && echo "  erp: ventas, kardex, catalogo y bandeja de salida reiniciados"
+  UPDATE tenant_counters SET sale_seq = 0, purchase_seq = 0;
+" && echo "  erp: ventas, compras, kardex, catalogo y contadores reiniciados"
 
 # --- Analitica: modelo de lectura --------------------------------------------
 docker exec kubo-mongo mongosh kubo_analytics --quiet --eval "
