@@ -197,6 +197,8 @@ services:
       KUBO_RUN_MIGRATIONS: "true"
       PHX_SERVER: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
+      # Documentos (P-25): volumen propio, entra en el respaldo.
+      KUBO_DOCUMENTS_PATH: /data/documents
     ports:
       - "${KUBO_ERP_PORT:-9083}:8083"
     depends_on:
@@ -210,6 +212,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 40s
+    volumes:
+      - documents:/data/documents
     mem_limit: 512m
     networks: [kubo-net]
 
@@ -369,6 +373,7 @@ services:
     networks: [kubo-net]
 
 volumes:
+  documents:
   pgdata:
   mongodata:
   rabbitdata:

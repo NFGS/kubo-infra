@@ -371,6 +371,26 @@ check "transferir mas de lo disponible se rechaza" "409" \
 check "la bodega por defecto no se puede borrar" "409" \
   "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${BASE}/warehouses/${DEFECTO_ID}" "${AUTH[@]}")"
 
+# La venta puede despachar desde una bodega elegida (P-22). Se usa un producto
+# propio para no descuadrar el inventario del producto de las demas pruebas.
+SKU_BODEGA="BOD-$(date +%s)"
+PROD_BODEGA=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
+  -d "{\"sku\":\"${SKU_BODEGA}\",\"name\":\"Producto de bodega\",\"price\":8000,\"cost\":5000}" \
+  | jq -r '.data.id // empty')
+curl -sS -o /dev/null -X POST "${BASE}/products/${PROD_BODEGA}/stock" "${AUTH[@]}" \
+  -d '{"kind":"IN","quantity":5,"reason":"Prueba de bodega"}'
+curl -sS -o /dev/null -X POST "${BASE}/transfers" "${AUTH[@]}" \
+  -d "{\"from_warehouse_id\":\"${DEFECTO_ID}\",\"to_warehouse_id\":\"${BODEGA_ID}\",\"items\":[{\"product_id\":\"${PROD_BODEGA}\",\"quantity\":3}]}"
+VENTA_BODEGA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${PROD_BODEGA}\",\"quantity\":1}],\"payment_method\":\"CARD\",\"warehouse_id\":\"${BODEGA_ID}\"}")
+check "la venta despacha desde la bodega elegida" "true" \
+  "$([[ -n "$(echo "${VENTA_BODEGA}" | jq -r '.data.id // empty')" ]] && echo true || echo false)"
+check "una bodega inexistente se rechaza" "404" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/sales" "${AUTH[@]}" \
+     -d "{\"items\":[{\"product_id\":\"${PROD_BODEGA}\",\"quantity\":1}],\"payment_method\":\"CARD\",\"warehouse_id\":\"00000000-0000-0000-0000-000000000000\"}")"
+check "el inventario del producto de bodega cuadra" "4" \
+  "$(curl -sS "${BASE}/products/${PROD_BODEGA}" "${AUTH[@]}" | jq -r '.data.stock')"
+
 # Aviso de stock bajo (P-19): se dispara al cruzar el minimo, una sola vez.
 SKU_ALERTA="ALR-$(date +%s)"
 ALERTA_PROD=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
@@ -385,6 +405,16 @@ check "la venta que cruza el minimo deja un aviso" "1" \
   "$(echo "${AVISOS}" | jq --arg id "${ALERTA_PROD}" '[.data[] | select(.kind == "LOW_STOCK" and .reference_id == $id)] | length')"
 check "el aviso dice cuantas unidades quedan" "true" \
   "$([[ "$(echo "${AVISOS}" | jq -r --arg id "${ALERTA_PROD}" '[.data[] | select(.reference_id == $id)][0].body')" == *"4 unidades"* ]] && echo true || echo false)"
+
+# El aviso nace encolado y el entregador lo envia en segundo plano (P-19).
+ESTADO_AVISO=""
+for _ in $(seq 1 12); do
+  ESTADO_AVISO=$(curl -sS "${BASE}/notifications" "${AUTH[@]}" \
+    | jq -r --arg id "${ALERTA_PROD}" '[.data[] | select(.reference_id == $id)][0].status // empty')
+  [[ "${ESTADO_AVISO}" == "SENT" ]] && break
+  sleep 1
+done
+check "el aviso se entrega en segundo plano" "SENT" "${ESTADO_AVISO}"
 
 VENTA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
   -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":3}],\"payment_method\":\"CASH\"}")
@@ -564,6 +594,19 @@ check "la factura es un documento UBL 2.1" "true" \
   "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *"UBL 2.1"* ]] && echo true || echo false)"
 check "el XML trae el nombre del negocio que propaga el gateway" "true" \
   "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *"Tienda La Esquina"* ]] && echo true || echo false)"
+
+# Documentos (P-25, ADR-0018): la factura deja su XML como documento
+# descargable y el hash verifica que el contenido no cambio.
+DOCS=$(curl -sS "${BASE}/documents" "${AUTH[@]}")
+DOC_ID=$(echo "${DOCS}" | jq -r '.data[0].id // empty')
+DOC_HASH=$(echo "${DOCS}" | jq -r '.data[0].sha256 // empty')
+check_positivo "la factura deja su documento XML" \
+  "$(echo "${DOCS}" | jq '[.data[] | select(.kind == "INVOICE_XML")] | length')"
+curl -sS -o /tmp/opencode/documento.xml "${BASE}/documents/${DOC_ID}" "${AUTH[@]}"
+check "el documento descargado coincide con su hash" "${DOC_HASH}" \
+  "$(sha256sum /tmp/opencode/documento.xml | cut -d' ' -f1)"
+check "el documento es el XML de la factura" "true" \
+  "$(grep -q "UBL 2.1" /tmp/opencode/documento.xml && echo true || echo false)"
 
 # El cliente se denormaliza en la venta: si viene cliente, el nombre es
 # obligatorio (fail-fast) y el CSV no debe ejecutar formulas al abrirlo.
