@@ -464,6 +464,20 @@ check_positivo "el filtro de fechas usa la zona del negocio" \
 check "una fecha invalida responde 400" "400" \
   "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/reports/sales.csv?from=no-es-fecha" "${AUTH[@]}")"
 
+# Factura electronica (P-18): puerto de facturacion con adaptador sandbox. Se
+# emite una sola vez (el CUFE es inmutable) y el XML sigue UBL 2.1.
+FACTURA=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH[@]}")
+CUFE=$(echo "${FACTURA}" | jq -r '.data.cufe // empty')
+check "la venta se factura con CUFE valido" "true" \
+  "$([[ "${CUFE}" =~ ^[0-9a-f]{96}$ ]] && echo true || echo false)"
+FACTURA2=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH[@]}")
+check "facturar dos veces devuelve la misma factura" "true" \
+  "$([[ "${CUFE}" == "$(echo "${FACTURA2}" | jq -r '.data.cufe')" ]] && echo true || echo false)"
+check "la factura es un documento UBL 2.1" "true" \
+  "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *"UBL 2.1"* ]] && echo true || echo false)"
+check "el XML trae el nombre del negocio que propaga el gateway" "true" \
+  "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *"Tienda La Esquina"* ]] && echo true || echo false)"
+
 # El cliente se denormaliza en la venta: si viene cliente, el nombre es
 # obligatorio (fail-fast) y el CSV no debe ejecutar formulas al abrirlo.
 SKU_FORMULA="FORMULA-$(date +%s)"
@@ -498,6 +512,14 @@ check "la venta queda anulada" "VOIDED" "${ANULADA}"
 
 STOCK_DEVUELTO=$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')
 check "el inventario vuelve a 10 unidades" "10" "${STOCK_DEVUELTO}"
+
+# Una venta anulada SIN factura no se factura: el camino es una nota credito.
+VENTA_ANULADA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":1}],\"payment_method\":\"CASH\"}" \
+  | jq -r '.data.id // empty')
+curl -sS -o /dev/null -X POST "${BASE}/sales/${VENTA_ANULADA}/void" "${AUTH[@]}"
+check "una venta anulada no se factura" "409" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/sales/${VENTA_ANULADA}/invoice" "${AUTH[@]}")"
 
 # ---------------------------------------------------------------------------
 echo

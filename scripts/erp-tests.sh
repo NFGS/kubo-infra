@@ -43,7 +43,7 @@ ROOT_PASSWORD="$(leer_env KUBO_POSTGRES_ROOT_PASSWORD kubo_root_dev)"
 echo "[erp-tests] pruebas puras (sin base de datos)"
 docker run --rm -m 3g -e MIX_ENV=test \
   -v "${ROOT}/kubo-erp/test:/app/test:ro" \
-  --entrypoint bash "${IMAGEN}" -c 'cd /app && mix compile >/dev/null 2>&1 && ERL_LIBS=/app/_build/test/lib elixir -e "ExUnit.start(); Code.require_file(\"test/kubo_erp/sales_totals_test.exs\"); Code.require_file(\"test/kubo_erp/outbox_test.exs\"); Code.require_file(\"test/kubo_erp/pagination_test.exs\"); Code.require_file(\"test/kubo_erp/packs_test.exs\")"'
+  --entrypoint bash "${IMAGEN}" -c 'cd /app && mix compile >/dev/null 2>&1 && ERL_LIBS=/app/_build/test/lib elixir -e "ExUnit.start(); Code.require_file(\"test/kubo_erp/sales_totals_test.exs\"); Code.require_file(\"test/kubo_erp/outbox_test.exs\"); Code.require_file(\"test/kubo_erp/pagination_test.exs\"); Code.require_file(\"test/kubo_erp/packs_test.exs\"); Code.require_file(\"test/kubo_erp/billing/sandbox_test.exs\")"'
 
 if ! docker ps --format '{{.Names}}' | grep -q '^kubo-postgres$'; then
   echo "[erp-tests] kubo-postgres no esta corriendo: se omiten las pruebas de integracion"
