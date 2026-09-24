@@ -181,6 +181,27 @@ check_positivo "se verificaron entradas de auditoria" "$(echo "${AUDITORIA}" | j
 check "la bitacora declara la version vigente del algoritmo" "true" \
   "$([[ "$(echo "${AUDITORIA}" | jq -r '.hashVersions["2"] // 0')" -ge 1 ]] && echo true || echo false)"
 
+# --- Usuarios y roles (P-20) --------------------------------------------------
+USUARIO_NUEVO="equipo$(date +%s)@kubo.local"
+CREADO=$(curl -sS -X POST "${BASE}/users" "${AUTH[@]}" \
+  -d "{\"fullName\":\"Vendedor de Prueba\",\"email\":\"${USUARIO_NUEVO}\",\"password\":\"Vendedor123!\",\"role\":\"SELLER\"}")
+check "un administrador crea un usuario con rol" "SELLER" "$(echo "${CREADO}" | jq -r '.role // empty')"
+
+NUEVO_TOKEN=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${USUARIO_NUEVO}\",\"password\":\"Vendedor123!\"}" | jq -r '.accessToken // empty')
+check "el usuario nuevo puede ingresar" "true" \
+  "$([[ -n "${NUEVO_TOKEN}" ]] && echo true || echo false)"
+check "un vendedor no puede crear usuarios" "403" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/users" -H "Authorization: Bearer ${NUEVO_TOKEN}" \
+     -H 'Content-Type: application/json' \
+     -d "{\"fullName\":\"X\",\"email\":\"x$(date +%s)@kubo.local\",\"password\":\"Clave1234!\",\"role\":\"SELLER\"}")"
+
+USUARIO_ID=$(echo "${CREADO}" | jq -r '.id')
+curl -sS -o /dev/null -X PATCH "${BASE}/users/${USUARIO_ID}" "${AUTH[@]}" -d '{"status":"DISABLED"}'
+check "un usuario deshabilitado no puede ingresar" "USER_DISABLED" \
+  "$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+     -d "{\"email\":\"${USUARIO_NUEVO}\",\"password\":\"Vendedor123!\"}" | jq -r '.code // "OK"')"
+
 EVENTOS=$(curl -sS "${BASE}/audit" "${AUTH[@]}")
 check "el intento de acceso fallido queda en la auditoria" "true" \
   "$([[ "$(echo "${EVENTOS}" | jq '[.[] | select(.action == "LOGIN_FAILED")] | length')" -ge 1 ]] && echo true || echo false)"
@@ -413,7 +434,7 @@ check "no se revela si el correo existe" "204" \
 
 # ---------------------------------------------------------------------------
 echo
-echo "[10/11] Compras y proveedores"
+echo "[10/11] Compras, proveedores y caja"
 # ---------------------------------------------------------------------------
 PROVEEDOR=$(curl -sS -X POST "${BASE}/suppliers" "${AUTH[@]}" \
   -d "{\"name\":\"Proveedor Prueba Humo $(date +%s)\",\"tax_id\":\"900$(date +%H%M%S)\",\"phone\":\"3100000000\"}")
@@ -441,6 +462,23 @@ check "el inventario vuelve a 10 unidades" "10" \
 
 check "RLS en compras: sin contexto de negocio no hay filas" "0" \
   "$(docker exec kubo-postgres psql -U kubo_erp -d kubo_erp -tAc "select count(*) from purchases" 2>/dev/null | tr -d '[:space:]')"
+
+# --- Caja: apertura, arqueo y cierre (P-16) -----------------------------------
+CAJA=$(curl -sS -X POST "${BASE}/cash-sessions/open" "${AUTH[@]}" -d '{"opening_amount":50000}')
+check "la caja abre con una base de 50000" "OPEN" "$(echo "${CAJA}" | jq -r '.data.status // empty')"
+check "una segunda apertura se rechaza" "409" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/cash-sessions/open" "${AUTH[@]}" -d '{"opening_amount":1000}')"
+CAJA_ID=$(echo "${CAJA}" | jq -r '.data.id')
+
+curl -sS -o /dev/null -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":1}],\"payment_method\":\"CASH\"}"
+check "la venta en efectivo entra al arqueo del turno" "61900.00" \
+  "$(curl -sS "${BASE}/cash-sessions/current" "${AUTH[@]}" | jq -r '.data.summary.expected_cash // empty')"
+
+CIERRE_CAJA=$(curl -sS -X POST "${BASE}/cash-sessions/${CAJA_ID}/close" "${AUTH[@]}" -d '{"counted_amount":61900}')
+check "el cierre cuadra con el efectivo contado" "0.00" "$(echo "${CIERRE_CAJA}" | jq -r '.data.difference // empty')"
+check "un segundo cierre se rechaza" "409" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/cash-sessions/${CAJA_ID}/close" "${AUTH[@]}" -d '{"counted_amount":1}')"
 
 # ---------------------------------------------------------------------------
 echo

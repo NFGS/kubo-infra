@@ -30,9 +30,10 @@ echo "[kubo] limpiando datos de demostracion"
 # --- Identidad: negocios de prueba y bitacora ---------------------------------
 docker exec kubo-postgres psql -U kubo_root -d kubo_iam -q -c "
   DELETE FROM tenants WHERE slug LIKE 'negocio-aislado%';
+  DELETE FROM users WHERE email LIKE 'equipo%@kubo.local';
   TRUNCATE audit_logs;
   TRUNCATE mail_outbox;
-" && echo "  identidad: negocios de prueba eliminados, bitacora y buzon reiniciados"
+" && echo "  identidad: negocios y usuarios de prueba eliminados, bitacora y buzon reiniciados"
 
 # --- CRM: clientes ------------------------------------------------------------
 docker exec kubo-postgres psql -U kubo_root -d kubo_crm -q -c "DELETE FROM customers;" \
