@@ -371,6 +371,21 @@ check "transferir mas de lo disponible se rechaza" "409" \
 check "la bodega por defecto no se puede borrar" "409" \
   "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${BASE}/warehouses/${DEFECTO_ID}" "${AUTH[@]}")"
 
+# Aviso de stock bajo (P-19): se dispara al cruzar el minimo, una sola vez.
+SKU_ALERTA="ALR-$(date +%s)"
+ALERTA_PROD=$(curl -sS -X POST "${BASE}/products" "${AUTH[@]}" \
+  -d "{\"sku\":\"${SKU_ALERTA}\",\"name\":\"Producto con alerta\",\"price\":5000,\"cost\":3000,\"min_stock\":5}" \
+  | jq -r '.data.id // empty')
+curl -sS -o /dev/null -X POST "${BASE}/products/${ALERTA_PROD}/stock" "${AUTH[@]}" \
+  -d '{"kind":"IN","quantity":6,"reason":"Prueba de alerta"}'
+curl -sS -o /dev/null -X POST "${BASE}/sales" "${AUTH[@]}" \
+  -d "{\"items\":[{\"product_id\":\"${ALERTA_PROD}\",\"quantity\":2}],\"payment_method\":\"CARD\"}"
+AVISOS=$(curl -sS "${BASE}/notifications" "${AUTH[@]}")
+check "la venta que cruza el minimo deja un aviso" "1" \
+  "$(echo "${AVISOS}" | jq --arg id "${ALERTA_PROD}" '[.data[] | select(.kind == "LOW_STOCK" and .reference_id == $id)] | length')"
+check "el aviso dice cuantas unidades quedan" "true" \
+  "$([[ "$(echo "${AVISOS}" | jq -r --arg id "${ALERTA_PROD}" '[.data[] | select(.reference_id == $id)][0].body')" == *"4 unidades"* ]] && echo true || echo false)"
+
 VENTA=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
   -d "{\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":3}],\"payment_method\":\"CASH\"}")
 VENTA_ID=$(echo "${VENTA}" | jq -r '.data.id // empty')
