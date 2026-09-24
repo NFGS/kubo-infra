@@ -431,6 +431,15 @@ check "la venta guarda la mesa del vertical" "Mesa 4" \
 check "el servicio no deja movimientos de kardex" "0" \
   "$(curl -sS "${BASE}/stock/movements?product_id=${SERVICIO}" "${AUTH[@]}" | jq -r '.data | length')"
 
+# El paquete siembra el catalogo de arranque (P-17) y es idempotente: aplicarlo
+# dos veces no duplica productos.
+SIEMBRA=$(curl -sS -X POST "${BASE}/packs/apply" "${AUTH[@]}")
+check "el paquete aplica su catalogo de arranque" "3" \
+  "$(echo "${SIEMBRA}" | jq -r '.data.created + .data.skipped // empty')"
+SIEMBRA2=$(curl -sS -X POST "${BASE}/packs/apply" "${AUTH[@]}")
+check "sembrar dos veces no duplica" "0" "$(echo "${SIEMBRA2}" | jq -r '.data.created // empty')"
+check "los productos ya sembrados se omiten" "3" "$(echo "${SIEMBRA2}" | jq -r '.data.skipped // empty')"
+
 # ADR-0012: el ERP respeta la zona horaria del negocio que propaga el gateway y
 # rechaza una zona desconocida en lugar de caer a UTC en silencio.
 TZ_DIRECTA=$(curl -sS http://localhost:9083/api/v1/sales/stats \
