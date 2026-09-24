@@ -721,6 +721,21 @@ COMPRA_ID=$(echo "${COMPRA}" | jq -r '.data.id // empty')
 check "compra registrada por 25000.00" "25000.00" "$(echo "${COMPRA}" | jq -r '.data.total // empty')"
 check "el IVA de la compra se desagrega" "3991.60" "$(echo "${COMPRA}" | jq -r '.data.tax // empty')"
 
+# Soportes de compra (P-25): el archivo queda ligado a la compra que lo origina.
+printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%%%EOF\n' > /tmp/opencode/soporte.pdf
+# Multipart: solo la cabecera de autorizacion (el Content-Type lo pone curl).
+SOPORTE=$(curl -sS -X POST "${BASE}/purchases/${COMPRA_ID}/documents" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@/tmp/opencode/soporte.pdf;type=application/pdf")
+check "la compra acepta un soporte" "PURCHASE_SUPPORT" "$(echo "${SOPORTE}" | jq -r '.data.kind // empty')"
+printf 'no es un soporte valido' > /tmp/opencode/soporte.exe
+check "un formato no soportado se rechaza" "INVALID_EXTENSION" \
+  "$(curl -sS -X POST "${BASE}/purchases/${COMPRA_ID}/documents" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -F "file=@/tmp/opencode/soporte.exe" | jq -r '.code // "OK"')"
+check "el soporte queda en el listado de documentos" "true" \
+  "$([[ "$(curl -sS "${BASE}/documents" "${AUTH[@]}" | jq '[.data[] | select(.kind == "PURCHASE_SUPPORT")] | length')" -ge 1 ]] && echo true || echo false)"
+
 check "la compra suma 5 unidades al inventario" "15" \
   "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')"
 check "el costo se actualiza al valor sin IVA" "4201.68" \
