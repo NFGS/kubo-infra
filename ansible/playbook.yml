@@ -1,0 +1,110 @@
+---
+# ---------------------------------------------------------------------------
+# Kubo en un servidor propio (Fase 5).
+#
+# Deja el sistema corriendo en una maquina limpia con secretos UNICOS: las
+# claves del despliegue se generan en el host (no viajan en el repositorio) y
+# los certificados de la malla se crean alli mismo.
+#
+# Uso:
+#   ansible-playbook -i inventory.ini playbook.yml
+#
+# Requisitos: un host con Debian/Ubuntu y acceso SSH con sudo.
+# ---------------------------------------------------------------------------
+- name: Kubo en un servidor propio
+  hosts: kubo
+  become: true
+
+  vars:
+    kubo_dir: /opt/kubo
+    kubo_repo: "{{ lookup('env', 'KUBO_REPO') | default('https://gitlab.com/kubo/kubo.git', true) }}"
+    kubo_version: "{{ lookup('env', 'KUBO_VERSION') | default('main', true) }}"
+    # Puertos publicos: la PWA y el borde TLS. Los servicios internos y las
+    # bases NO se publican (la malla mTLS los protege y no necesitan salir).
+    kubo_public_ports: ["3000", "3080", "3443"]
+    kubo_secret_keys: >-
+      KUBO_POSTGRES_ROOT_PASSWORD KUBO_IAM_DB_PASSWORD KUBO_CRM_DB_PASSWORD
+      KUBO_ERP_DB_PASSWORD KUBO_RABBITMQ_PASSWORD KUBO_ERP_SECRET_KEY_BASE
+      KUBO_TOTP_ENCRYPTION_KEY
+
+  tasks:
+    - name: Paquetes base
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - openssl
+          - ufw
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Docker y el plugin de compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    - name: Servicio de Docker habilitado (los servicios vuelven tras un reinicio)
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Codigo del proyecto
+      ansible.builtin.git:
+        repo: "{{ kubo_repo }}"
+        dest: "{{ kubo_dir }}"
+        version: "{{ kubo_version }}"
+        depth: 1
+
+    - name: Secretos del despliegue (se generan una sola vez, en el host)
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          cp .env.example .env
+          for clave in {{ kubo_secret_keys }}; do
+            sed -i "s|^${clave}=.*|${clave}=$(openssl rand -hex 24)|" .env
+          done
+          sed -i "s|^KUBO_ADMIN_PASSWORD=.*|KUBO_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
+          chmod 600 .env
+        chdir: "{{ kubo_dir }}/kubo-infra"
+        creates: "{{ kubo_dir }}/kubo-infra/.env"
+
+    - name: Certificados de la malla interna (P-28)
+      ansible.builtin.command:
+        cmd: ./kubo-infra/scripts/gen-internal-certs.sh
+        chdir: "{{ kubo_dir }}"
+        creates: "{{ kubo_dir }}/kubo-infra/certs/ca.crt"
+
+    - name: Levantar el sistema
+      ansible.builtin.command:
+        cmd: make up
+        chdir: "{{ kubo_dir }}"
+
+    # Se usa `ufw` por comandos para no depender de la coleccion
+    # community.general: el despliegue solo necesita ansible-core.
+    - name: "Cortafuegos: abrir solo lo publico"
+      ansible.builtin.command:
+        cmd: "ufw allow {{ item }}/tcp"
+      loop: "{{ kubo_public_ports }}"
+      changed_when: false
+
+    - name: "Cortafuegos: politica por defecto (niega lo demas)"
+      ansible.builtin.command:
+        cmd: ufw --force default deny incoming
+      changed_when: false
+
+    - name: "Cortafuegos: encendido"
+      ansible.builtin.command:
+        cmd: ufw --force enable
+      changed_when: false
+
+    - name: Recordatorio de la contrasena inicial
+      ansible.builtin.debug:
+        msg: >-
+          El usuario es admin@kubo.local y la contrasena quedo en
+          {{ kubo_dir }}/kubo-infra/.env (KUBO_ADMIN_PASSWORD). Cambiela al
+          entrar y active el segundo factor.

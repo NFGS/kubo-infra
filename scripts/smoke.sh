@@ -106,6 +106,11 @@ check "kubo-gateway responde" "UP" \
 
 # El ERP ya vive en la malla cifrada (P-28, ADR-0020): sin certificado de cliente
 # no hay handshake, asi que la comprobacion presenta el del gateway.
+# Un certificado por vencer tumba toda la malla (P-28): se avisa con 30 dias de
+# anticipacion, que es cuando `make rotate-ca` resuelve sin apuro.
+check "la CA de la malla es valida por 30 dias mas" "true" \
+  "$(openssl x509 -checkend 2592000 -noout -in "${ROOT_SMOKE}/certs/ca.crt" >/dev/null 2>&1 && echo true || echo false)"
+
 check "kubo-erp responde" "UP" \
   "$(curl -sS --max-time 5 "${CURL_TLS[@]}" https://localhost:9083/api/v1/health | jq -r '.status // "sin respuesta"')"
 check "la malla rechaza a un cliente sin certificado" "000" \
@@ -623,6 +628,20 @@ check "el documento descargado coincide con su hash" "${DOC_HASH}" \
   "$(sha256sum /tmp/opencode/documento.xml | cut -d' ' -f1)"
 check "el documento es el XML de la factura" "true" \
   "$(grep -q "UBL 2.1" /tmp/opencode/documento.xml && echo true || echo false)"
+
+# El comprobante de la venta queda como PDF descargable (P-25): antes se
+# imprimia desde el navegador y no se conservaba.
+DOCS_COMPROBANTE=$(curl -sS "${BASE}/documents" "${AUTH[@]}")
+COMPROBANTE_ID=$(echo "${DOCS_COMPROBANTE}" \
+  | jq -r --arg venta "${VENTA_ID}" \
+      '[.data[] | select(.kind == "RECEIPT_PDF" and .reference_id == $venta)][0].id // empty')
+check_positivo "la venta deja su comprobante en PDF" \
+  "$([[ -n "${COMPROBANTE_ID}" ]] && echo 1 || echo 0)"
+curl -sS -o /tmp/opencode/comprobante.pdf "${BASE}/documents/${COMPROBANTE_ID}" "${AUTH[@]}"
+check "el comprobante es un PDF valido" "true" \
+  "$([[ "$(head -c 8 /tmp/opencode/comprobante.pdf)" == "%PDF-1.4" ]] && echo true || echo false)"
+check "el comprobante trae el numero de la venta" "true" \
+  "$(grep -q "${VENTA_NUMERO}" /tmp/opencode/comprobante.pdf && echo true || echo false)"
 
 # El cliente se denormaliza en la venta: si viene cliente, el nombre es
 # obligatorio (fail-fast) y el CSV no debe ejecutar formulas al abrirlo.
