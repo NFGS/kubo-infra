@@ -67,7 +67,12 @@ check_positivo() {
   fi
 }
 
-COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/docker-compose.yml"
+ROOT_SMOKE="$(cd "$(dirname "$0")/.." && pwd)"
+COMPOSE_FILE="${ROOT_SMOKE}/docker-compose.yml"
+
+# La malla interna exige certificado de cliente (P-28, ADR-0020): las llamadas
+# directas de esta prueba presentan el del gateway, igual que la aplicacion.
+CURL_TLS=(--cacert "${ROOT_SMOKE}/certs/ca.crt" --cert "${ROOT_SMOKE}/certs/gateway.crt" --key "${ROOT_SMOKE}/certs/gateway.key")
 
 # El humo hace ~20 peticiones de autenticacion; para que la prueba sea
 # idempotente (repetible en el mismo minuto) se eleva el limite de autenticacion
@@ -88,12 +93,23 @@ echo "================================================================"
 # ---------------------------------------------------------------------------
 echo "[1/11] Salud de los servicios"
 # ---------------------------------------------------------------------------
-for service in "kubo-gateway:9080" "kubo-iam:9081" "kubo-crm:9082" "kubo-erp:9083" "kubo-analytics:9084"; do
+for service in "kubo-iam:9081" "kubo-crm:9082" "kubo-analytics:9084"; do
   name="${service%%:*}"
   port="${service##*:}"
-  status=$(curl -sS --max-time 5 "http://localhost:${port}/api/v1/health" | jq -r '.status // "sin respuesta"')
+  status=$(curl -sS --max-time 5 "${CURL_TLS[@]}" "https://localhost:${port}/api/v1/health" | jq -r '.status // "sin respuesta"')
   check "${name} responde" "UP" "${status}"
 done
+
+# El gateway es el borde: sigue en HTTP para el navegador.
+check "kubo-gateway responde" "UP" \
+  "$(curl -sS --max-time 5 http://localhost:9080/api/v1/health | jq -r '.status // "sin respuesta"')" 
+
+# El ERP ya vive en la malla cifrada (P-28, ADR-0020): sin certificado de cliente
+# no hay handshake, asi que la comprobacion presenta el del gateway.
+check "kubo-erp responde" "UP" \
+  "$(curl -sS --max-time 5 "${CURL_TLS[@]}" https://localhost:9083/api/v1/health | jq -r '.status // "sin respuesta"')"
+check "la malla rechaza a un cliente sin certificado" "000" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --cacert "${ROOT_SMOKE}/certs/ca.crt" https://localhost:9083/api/v1/health 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 echo
@@ -183,7 +199,7 @@ check "cabecera de identidad inyectada es ignorada" "401" "${SUPLANTACION}"
 
 # Defensa en profundidad: una cabecera de negocio malformada no llega al motor.
 check "una cabecera de negocio malformada se rechaza con 400" "400" \
-  "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:9083/api/v1/products -H 'X-Tenant-Id: no-es-uuid')"
+  "$(curl -sS "${CURL_TLS[@]}" -o /dev/null -w '%{http_code}' https://localhost:9083/api/v1/products -H 'X-Tenant-Id: no-es-uuid')"
 
 # Bloqueo de cuenta (P-11): el usuario se crea aqui y se reutiliza en el bloque 9.
 SUFIJO=$(date +%s)
@@ -559,12 +575,12 @@ check "los productos ya sembrados se omiten" "3" "$(echo "${SIEMBRA2}" | jq -r '
 
 # ADR-0012: el ERP respeta la zona horaria del negocio que propaga el gateway y
 # rechaza una zona desconocida en lugar de caer a UTC en silencio.
-TZ_DIRECTA=$(curl -sS http://localhost:9083/api/v1/sales/stats \
+TZ_DIRECTA=$(curl -sS "${CURL_TLS[@]}" https://localhost:9083/api/v1/sales/stats \
   -H "x-tenant-id: ${TENANT}" -H "x-user-id: ${TENANT}" -H "x-tenant-timezone: America/Mexico_City" \
   | jq -r '.data.timezone // "sin zona"')
 check "el erp respeta la zona horaria del negocio" "America/Mexico_City" "${TZ_DIRECTA}"
 check "una zona horaria desconocida se rechaza" "400" \
-  "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:9083/api/v1/sales/stats \
+  "$(curl -sS "${CURL_TLS[@]}" -o /dev/null -w '%{http_code}' https://localhost:9083/api/v1/sales/stats \
      -H "x-tenant-id: ${TENANT}" -H "x-user-id: ${TENANT}" -H 'x-tenant-timezone: Marte/Olympus')"
 
 # Reportes exportables (P-21): CSV de ventas e inventario; el filtro de fechas
@@ -630,7 +646,7 @@ SIN_NOMBRE=$(curl -sS -X POST "${BASE}/sales" "${AUTH[@]}" \
 check "vender con cliente sin nombre se rechaza" "CUSTOMER_NAME_REQUIRED" \
   "$(echo "${SIN_NOMBRE}" | jq -r '.code // "OK"')"
 
-OUTBOX_FALLIDOS=$(curl -sS http://localhost:9083/api/v1/health | jq -r '.outbox.failed // "?"')
+OUTBOX_FALLIDOS=$(curl -sS "${CURL_TLS[@]}" https://localhost:9083/api/v1/health | jq -r '.outbox.failed // "?"')
 check "la bandeja de salida no tiene eventos fallidos" "0" "${OUTBOX_FALLIDOS}"
 
 # ---------------------------------------------------------------------------

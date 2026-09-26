@@ -120,6 +120,10 @@ services:
       KUBO_JWT_PRIVATE_KEY: ${KUBO_JWT_PRIVATE_KEY:-}
       # Llave con la que se cifra el secreto TOTP en reposo (P-30).
       KUBO_TOTP_ENCRYPTION_KEY: ${KUBO_TOTP_ENCRYPTION_KEY:-}
+      KUBO_INTERNAL_TLS: "true"
+      KUBO_TLS_CERT: /certs/iam.crt
+      KUBO_TLS_KEY: /certs/iam.key
+      KUBO_TLS_CA: /certs/ca.crt
       # Bloqueo de cuenta por intentos fallidos (P-11).
       KUBO_AUTH_MAX_FAILED_ATTEMPTS: ${KUBO_AUTH_MAX_FAILED_ATTEMPTS:-5}
       KUBO_AUTH_LOCK_MINUTES: ${KUBO_AUTH_LOCK_MINUTES:-15}
@@ -138,11 +142,13 @@ services:
       JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
     ports:
       - "${KUBO_IAM_PORT:-9081}:8081"
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --ca-certificate=/certs/ca.crt --certificate=/certs/iam.crt --private-key=/certs/iam.key https://localhost:8081/api/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -165,14 +171,20 @@ services:
       SECRET_KEY_BASE: ${KUBO_CRM_SECRET_KEY_BASE:-kubo_crm_dev_secret_key_base_cambiar_en_produccion_0123456789}
       KUBO_RUN_MIGRATIONS: "true"
       PORT: "8082"
+      KUBO_INTERNAL_TLS: "true"
+      KUBO_TLS_CERT: /certs/crm.crt
+      KUBO_TLS_KEY: /certs/crm.key
+      KUBO_TLS_CA: /certs/ca.crt
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
       - "${KUBO_CRM_PORT:-9082}:8082"
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --ca-certificate=/certs/ca.crt --certificate=/certs/crm.crt --private-key=/certs/crm.key https://localhost:8082/api/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -199,6 +211,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
       # Documentos (P-25): volumen propio, entra en el respaldo.
       KUBO_DOCUMENTS_PATH: /data/documents
+      # Malla interna (P-28, ADR-0020): HTTPS con certificado de cliente.
+      KUBO_INTERNAL_TLS: "true"
+      KUBO_TLS_CERT: /certs/erp.crt
+      KUBO_TLS_KEY: /certs/erp.key
+      KUBO_TLS_CA: /certs/ca.crt
     ports:
       - "${KUBO_ERP_PORT:-9083}:8083"
     depends_on:
@@ -207,13 +224,16 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/api/v1/health || exit 1"]
+      # La malla exige cliente: el healthcheck presenta el certificado del propio
+      # servicio (cualquier certificado de la CA sirve como cliente).
+      test: ["CMD-SHELL", "wget -qO- --ca-certificate=/certs/ca.crt --certificate=/certs/erp.crt --private-key=/certs/erp.key https://localhost:8083/api/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
       start_period: 40s
     volumes:
       - documents:/data/documents
+      - ./certs:/certs:ro
     mem_limit: 512m
     networks: [kubo-net]
 
@@ -230,16 +250,22 @@ services:
       KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672/
       PORT: "8084"
+      KUBO_INTERNAL_TLS: "true"
+      KUBO_TLS_CERT: /certs/analytics.crt
+      KUBO_TLS_KEY: /certs/analytics.key
+      KUBO_TLS_CA: /certs/ca.crt
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
       - "${KUBO_ANALYTICS_PORT:-9084}:8084"
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       mongo:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --ca-certificate=/certs/ca.crt --certificate=/certs/analytics.crt --private-key=/certs/analytics.key https://localhost:8084/api/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -261,11 +287,15 @@ services:
       NODE_ENV: production
       PORT: "8080"
       REDIS_URL: redis://redis:6379
-      KUBO_IAM_URL: http://kubo-iam:8081
-      KUBO_CRM_URL: http://kubo-crm:8082
-      KUBO_ERP_URL: http://kubo-erp:8083
-      KUBO_ANALYTICS_URL: http://kubo-analytics:8084
-      KUBO_JWKS_URI: http://kubo-iam:8081/api/v1/auth/.well-known/jwks.json
+      KUBO_IAM_URL: https://kubo-iam:8081
+      KUBO_CRM_URL: https://kubo-crm:8082
+      KUBO_ERP_URL: https://kubo-erp:8083
+      KUBO_INTERNAL_TLS: "true"
+      KUBO_TLS_CERT: /certs/gateway.crt
+      KUBO_TLS_KEY: /certs/gateway.key
+      KUBO_TLS_CA: /certs/ca.crt
+      KUBO_ANALYTICS_URL: https://kubo-analytics:8084
+      KUBO_JWKS_URI: https://kubo-iam:8081/api/v1/auth/.well-known/jwks.json
       KUBO_RATE_LIMIT_PER_MINUTE: "600"
       # Configurable para que la prueba de humo pueda elevarlo durante su corrida
       # (hace ~20 peticiones de autenticacion y debe poder repetirse sin fallar).
@@ -290,6 +320,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+    volumes:
+      - ./certs:/certs:ro
     mem_limit: 384m
     networks: [kubo-net]
 
