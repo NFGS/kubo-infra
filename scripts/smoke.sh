@@ -744,6 +744,8 @@ check "un codigo invalido no abre la sesion de plataforma" "INVALID_TOTP" \
      -d "{\"challengeToken\":\"$(echo "${PLATAFORMA_LOGIN}" | jq -r '.challengeToken')\",\"code\":\"000000\"}" | jq -r '.code // "OK"')"
 check "un token de negocio no entra al panel de plataforma" "403" \
   "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/platform/tenants" "${AUTH[@]}")"
+check "un token de negocio no lee el uso de los negocios" "403" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/platform/usage" "${AUTH[@]}")"
 
 # Uso del plan (F6.1): el negocio ve lo que consume y el operador lo consulta.
 USO=$(curl -sS "${BASE}/usage" "${AUTH[@]}")
