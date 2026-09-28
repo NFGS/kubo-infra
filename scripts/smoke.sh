@@ -697,8 +697,9 @@ check "una venta anulada no se factura" "409" \
 echo
 echo "[8/11] Aislamiento entre negocios"
 # ---------------------------------------------------------------------------
+OTRO_EMAIL="otro$(date +%H%M%S)@kubo.local"
 OTRO=$(curl -sS -X POST "${BASE}/auth/register" -H 'Content-Type: application/json' \
-  -d "{\"tenantName\":\"Negocio Aislado $(date +%H%M%S)\",\"fullName\":\"Otro Dueno\",\"email\":\"otro$(date +%H%M%S)@kubo.local\",\"password\":\"OtraClave123!\"}")
+  -d "{\"tenantName\":\"Negocio Aislado $(date +%H%M%S)\",\"fullName\":\"Otro Dueno\",\"email\":\"${OTRO_EMAIL}\",\"password\":\"OtraClave123!\"}")
 OTRO_TOKEN=$(echo "${OTRO}" | jq -r '.accessToken // empty')
 
 if [[ -n "${OTRO_TOKEN}" ]]; then
@@ -714,6 +715,18 @@ fi
 
 IAM_SIN=$(docker exec kubo-postgres psql -U kubo_iam -d kubo_iam -tAc "select count(*) from users" 2>/dev/null | tr -d '[:space:]')
 check "RLS en IAM: sin contexto de negocio no hay filas" "0" "${IAM_SIN}"
+
+# Superficie del operador (ADR-0024): suspender un negocio es reversible y no
+# toca sus datos; el ingreso lo delata. Se usa el negocio aislado para no
+# afectar la demo.
+"${ROOT_SMOKE}/scripts/tenant-admin.sh" suspend "${OTRO_EMAIL}" >/dev/null
+check "un negocio suspendido no ingresa" "TENANT_SUSPENDED" \
+  "$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+     -d "{\"email\":\"${OTRO_EMAIL}\",\"password\":\"OtraClave123!\"}" | jq -r '.code // "OK"')"
+"${ROOT_SMOKE}/scripts/tenant-admin.sh" activate "${OTRO_EMAIL}" >/dev/null
+check "al reactivar el negocio vuelve a entrar" "true" \
+  "$([[ -n "$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+       -d "{\"email\":\"${OTRO_EMAIL}\",\"password\":\"OtraClave123!\"}" | jq -r '.accessToken // empty')" ]] && echo true || echo false)"
 
 # Plan comercial (ADR-0021): el cupo del plan se aplica por negocio y el sexto
 # usuario activo del plan community se rechaza. Se hace con el negocio aislado
