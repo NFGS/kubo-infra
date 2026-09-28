@@ -5,12 +5,12 @@
 #
 # La imagen del cliente de Postgres 17 (misma version que el servidor: un
 # pg_dump viejo no puede volcar un servidor nuevo) mas las herramientas de
-# Mongo. Habla con los servicios por la red del compose: no necesita el socket
-# de Docker ni acceso al host.
+# Mongo y rclone para la copia fuera del sitio. Habla con los servicios por la
+# red del compose: no necesita el socket de Docker ni acceso al host.
 # ---------------------------------------------------------------------------
 FROM postgres:17-alpine
 
-RUN apk add --no-cache bash mongodb-tools
+RUN apk add --no-cache bash mongodb-tools rclone
 
 COPY backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh

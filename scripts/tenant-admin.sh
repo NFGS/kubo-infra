@@ -6,6 +6,7 @@
 #   tenant-admin.sh suspend <slug|correo>         Suspende el negocio (reversible, no toca datos)
 #   tenant-admin.sh activate <slug|correo>        Reactiva el negocio
 #   tenant-admin.sh renew <slug|correo> [dias]    Registra el pago: extiende la renovacion (30 dias)
+#   tenant-admin.sh usage                         Uso y soporte por negocio (F6.5)
 #
 # Es la superficie del operador mientras no exista un rol de plataforma: el
 # dueno del despliegue ya tiene acceso al servidor, y un script no agrega
@@ -32,6 +33,13 @@ ROOT_PASSWORD="$(leer_env KUBO_POSTGRES_ROOT_PASSWORD kubo_root_dev)"
 psql_iam() {
   docker exec -e PGPASSWORD="${ROOT_PASSWORD}" kubo-postgres \
     psql -U kubo_root -d kubo_iam -tAc "$1"
+}
+
+# El ERP tambien se consulta como superusuario: agrega por negocio sin depender
+# de RLS, pero SOLO cuenta filas (nunca lee datos de negocio).
+psql_erp() {
+  docker exec -e PGPASSWORD="${ROOT_PASSWORD}" kubo-postgres \
+    psql -U kubo_root -d kubo_erp -tAc "$1"
 }
 
 accion="${1:-list}"
@@ -83,6 +91,34 @@ case "${accion}" in
     echo "[kubo] negocio ${afectados} -> ${estado}"
     ;;
 
+  usage)
+    # Metricas de operacion y soporte (F6.5): uso por negocio contra su plan y
+    # accesos fallidos de la ultima semana (el primer sintoma de un problema).
+    echo "slug|plan|estado|usuarios|bodegas|productos|ventas_mes|documentos_kb|accesos_fallidos_7d"
+
+    psql_iam "
+      select t.id || ' ' || t.slug || ' ' || t.plan || ' ' || t.status || ' ' ||
+             (select count(*) from users u where u.tenant_id = t.id and u.status = 'ACTIVE') || ' ' ||
+             (select count(*) from audit_logs a
+               where a.tenant_id = t.id and a.action = 'LOGIN_FAILED'
+                 and a.created_at > now() - interval '7 days')
+      from tenants t
+      order by t.created_at" | while read -r id slug plan estado usuarios fallidos; do
+      erp=$(psql_erp "
+        select (select count(*) from warehouses w where w.tenant_id = '${id}' and w.deleted_at is null)
+             || '|' ||
+               (select count(*) from products p where p.tenant_id = '${id}' and p.deleted_at is null)
+             || '|' ||
+               (select count(*) from sales s
+                 where s.tenant_id = '${id}' and s.status = 'COMPLETED'
+                   and to_char(s.inserted_at, 'YYYY-MM') = to_char(now(), 'YYYY-MM'))
+             || '|' ||
+               (select coalesce(sum(d.size), 0) / 1024 from documents d where d.tenant_id = '${id}')")
+
+      echo "${slug}|${plan}|${estado}|${usuarios}|${erp}|${fallidos}"
+    done
+    ;;
+
   renew)
     if [[ -z "${objetivo}" ]]; then
       echo "Falta el negocio: slug o correo de un usuario" >&2
@@ -123,7 +159,7 @@ case "${accion}" in
     ;;
 
   *)
-    echo "Uso: tenant-admin.sh list | suspend <slug|correo> | activate <slug|correo> | renew <slug|correo> [dias]" >&2
+    echo "Uso: tenant-admin.sh list | usage | suspend <slug|correo> | activate <slug|correo> | renew <slug|correo> [dias]" >&2
     exit 1
     ;;
 esac

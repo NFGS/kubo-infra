@@ -94,6 +94,7 @@ retener() {
 # ---------------------------------------------------------------------------
 ciclo() {
   local stamp dest verificacion="omitida" resultado=0
+  local OFFSITE_RESULTADO=""
   stamp="$(date +%Y-%m-%d_%H%M%S)"
   dest="${BACKUP_ROOT}/${stamp}"
   mkdir -p "${dest}"
@@ -127,6 +128,22 @@ ciclo() {
     fi
   fi
 
+  # Copia fuera del sitio (F6.3): rclone acepta una ruta montada (disco, NFS)
+  # o un remoto configurado (s3, b2, drive). La copia se VERIFICA con `rclone
+  # check`: un respaldo que no se puede leer en el destino no es un respaldo.
+  # Va ANTES del manifiesto para que este declare el resultado real.
+  if [ -n "${OFFSITE}" ]; then
+    if rclone copy "${dest}" "${OFFSITE}/${stamp}" --no-traverse >/dev/null 2>&1 &&
+       rclone check "${dest}" "${OFFSITE}/${stamp}" --size-only >/dev/null 2>&1; then
+      OFFSITE_RESULTADO="ok"
+      log "copia fuera del sitio verificada en ${OFFSITE}"
+    else
+      OFFSITE_RESULTADO="fallida"
+      resultado=1
+      log "copia fuera del sitio FALLIDA en ${OFFSITE}"
+    fi
+  fi
+
   {
     echo "fecha=${stamp}"
     echo "postgres=$(printf '%s.dump,' ${BASES} | sed 's/,$//')"
@@ -136,15 +153,11 @@ ciclo() {
     echo "retencion_minima=${KEEP_MIN}"
     echo "verificacion=${verificacion}"
     echo "conteos=${CONTEOS_RESULTADO}"
+    echo "fuera_del_sitio=${OFFSITE_RESULTADO:-no_configurada}"
   } > "${dest}/MANIFEST"
 
   # Integridad: el hash permite auditar un respaldo viejo sin restaurarlo.
   (cd "${dest}" && sha256sum ./* >> MANIFEST)
-
-  if [ -n "${OFFSITE}" ] && [ -d "${OFFSITE}" ]; then
-    cp -a "${dest}" "${OFFSITE}/"
-    log "copia fuera del sitio en ${OFFSITE}"
-  fi
 
   retener
   log "ciclo terminado (verificacion=${verificacion})"
