@@ -693,6 +693,28 @@ curl -sS -o /dev/null -X POST "${BASE}/sales/${VENTA_ANULADA}/void" "${AUTH[@]}"
 check "una venta anulada no se factura" "409" \
   "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/sales/${VENTA_ANULADA}/invoice" "${AUTH[@]}")"
 
+# Nota credito (P-18, ADR-0014): anular una venta facturada emite el documento
+# que corrige la factura; la factura no se edita ni se borra. La emision es
+# idempotente, como la factura.
+NOTA=$(curl -sS "${BASE}/sales/${VENTA_ID}/credit-note" "${AUTH[@]}")
+NOTA_NUM=$(echo "${NOTA}" | jq -r '.data.number // empty')
+CUDE=$(echo "${NOTA}" | jq -r '.data.cude // empty')
+check "la anulacion emitio la nota credito" "true" \
+  "$([[ "${NOTA_NUM}" == NC-* ]] && echo true || echo false)"
+check "la nota credito trae CUDE valido" "true" \
+  "$([[ "${CUDE}" =~ ^[0-9a-f]{96}$ ]] && echo true || echo false)"
+check "la nota credito referencia la factura que corrige" "true" \
+  "$([[ "$(echo "${NOTA}" | jq -r '.data.xml')" == *"${CUFE}"* ]] && echo true || echo false)"
+check "el XML de la nota es UBL CreditNote tipo 91" "true" \
+  "$([[ "$(echo "${NOTA}" | jq -r '.data.xml')" == *"<cbc:CreditNoteTypeCode>91</cbc:CreditNoteTypeCode>"* ]] && echo true || echo false)"
+NOTA2=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/credit-note" "${AUTH[@]}")
+check "reemitir devuelve la misma nota (idempotente)" "${NOTA_NUM}" \
+  "$(echo "${NOTA2}" | jq -r '.data.number // empty')"
+check_positivo "la nota credito deja su documento XML" \
+  "$(curl -sS "${BASE}/documents" "${AUTH[@]}" | jq '[.data[] | select(.kind == "CREDIT_NOTE_XML")] | length')"
+check "sin factura no hay nota que emitir" "INVOICE_NOT_FOUND" \
+  "$(curl -sS -X POST "${BASE}/sales/${VENTA_ANULADA}/credit-note" "${AUTH[@]}" | jq -r '.code // "OK"')"
+
 # ---------------------------------------------------------------------------
 echo
 echo "[8/11] Aislamiento entre negocios"
