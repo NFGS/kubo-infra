@@ -120,6 +120,9 @@ services:
       KUBO_JWT_PRIVATE_KEY: ${KUBO_JWT_PRIVATE_KEY:-}
       # Llave con la que se cifra el secreto TOTP en reposo (P-30).
       KUBO_TOTP_ENCRYPTION_KEY: ${KUBO_TOTP_ENCRYPTION_KEY:-}
+      # Operador de plataforma (F6.4): se crea al arrancar si no existe.
+      KUBO_PLATFORM_ADMIN_EMAIL: ${KUBO_PLATFORM_ADMIN_EMAIL:-operador@kubo.local}
+      KUBO_PLATFORM_ADMIN_PASSWORD: ${KUBO_PLATFORM_ADMIN_PASSWORD:-Operador123!}
       KUBO_INTERNAL_TLS: "true"
       KUBO_TLS_CERT: /certs/iam.crt
       KUBO_TLS_KEY: /certs/iam.key

@@ -69,6 +69,7 @@
             sed -i "s|^${clave}=.*|${clave}=$(openssl rand -hex 24)|" .env
           done
           sed -i "s|^KUBO_ADMIN_PASSWORD=.*|KUBO_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
+          sed -i "s|^KUBO_PLATFORM_ADMIN_PASSWORD=.*|KUBO_PLATFORM_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
           chmod 600 .env
         chdir: "{{ kubo_dir }}/kubo-infra"
         creates: "{{ kubo_dir }}/kubo-infra/.env"

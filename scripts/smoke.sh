@@ -734,6 +734,17 @@ RENOVADA_ESPERADA="$(date -d "+30 days" +%F)"
 check "la renovacion del plan queda registrada" "${RENOVADA_ESPERADA}" \
   "$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // empty')"
 
+# Reino de plataforma (F6.4, ADR-0025): el acceso del operador SIEMPRE pide el
+# codigo (segundo factor obligatorio) y un token de negocio no entra al panel.
+PLATAFORMA_LOGIN=$(curl -sS -X POST "${BASE}/platform/auth/login" -H 'Content-Type: application/json' \
+  -d '{"email":"operador@kubo.local","password":"Operador123!"}')
+check "el acceso de plataforma exige el codigo" "true" "$(echo "${PLATAFORMA_LOGIN}" | jq -r '.totpRequired // false')"
+check "un codigo invalido no abre la sesion de plataforma" "INVALID_TOTP" \
+  "$(curl -sS -X POST "${BASE}/platform/auth/totp" -H 'Content-Type: application/json' \
+     -d "{\"challengeToken\":\"$(echo "${PLATAFORMA_LOGIN}" | jq -r '.challengeToken')\",\"code\":\"000000\"}" | jq -r '.code // "OK"')"
+check "un token de negocio no entra al panel de plataforma" "403" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/platform/tenants" "${AUTH[@]}")"
+
 # Uso del plan (F6.1): el negocio ve lo que consume y el operador lo consulta.
 USO=$(curl -sS "${BASE}/usage" "${AUTH[@]}")
 check_positivo "el uso reporta las bodegas" "$(echo "${USO}" | jq '.data.warehouses')"
