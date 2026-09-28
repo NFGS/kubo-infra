@@ -32,6 +32,14 @@ done
 docker exec kubo-mongo mongodump --db kubo_analytics --archive --quiet > "${DEST}/kubo_analytics.archive"
 echo "  mongo: kubo_analytics.archive ($(du -h "${DEST}/kubo_analytics.archive" | cut -f1))"
 
+# Documentos (P-25): el XML de las facturas y los comprobantes en PDF viven en
+# un volumen, no en la base: un respaldo sin ellos no restaura un negocio.
+if docker volume inspect kubo_documents >/dev/null 2>&1; then
+  docker run --rm -v kubo_documents:/documents:ro -v "${DEST}":/dest alpine \
+    tar -czf /dest/documents.tar.gz -C /documents .
+  echo "  documentos: documents.tar.gz ($(du -h "${DEST}/documents.tar.gz" | cut -f1))"
+fi
+
 if command -v age >/dev/null 2>&1 && [[ -n "${KUBO_BACKUP_AGE_RECIPIENT:-}" ]]; then
   age -r "${KUBO_BACKUP_AGE_RECIPIENT}" -o "${DEST}/env.age" "${WORKSPACE_DIR}/kubo-infra/.env"
   echo "  configuracion: env.age (cifrada con age)"
@@ -45,6 +53,7 @@ cat > "${DEST}/MANIFEST" <<EOF
 fecha=${STAMP}
 postgres=kubo_iam.dump,kubo_crm.dump,kubo_erp.dump
 mongo=kubo_analytics.archive
+documentos=documents.tar.gz
 retencion_dias=${RETENTION_DAYS}
 EOF
 

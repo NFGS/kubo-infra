@@ -392,6 +392,11 @@ check "transferir mas de lo disponible se rechaza" "409" \
 check "la bodega por defecto no se puede borrar" "409" \
   "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${BASE}/warehouses/${DEFECTO_ID}" "${AUTH[@]}")"
 
+# El plan tambien limita las bodegas (ADR-0021): la demo es community (2).
+LIMITE_BODEGAS=$(curl -sS -X POST "${BASE}/warehouses" "${AUTH[@]}" -d '{"name":"Bodega extra"}')
+check "el plan limita las bodegas" "PLAN_LIMIT_REACHED" \
+  "$(echo "${LIMITE_BODEGAS}" | jq -r '.code // "OK"')"
+
 # La venta puede despachar desde una bodega elegida (P-22). Se usa un producto
 # propio para no descuadrar el inventario del producto de las demas pruebas.
 SKU_BODEGA="BOD-$(date +%s)"
@@ -619,8 +624,10 @@ check "el XML trae el nombre del negocio que propaga el gateway" "true" \
 # Documentos (P-25, ADR-0018): la factura deja su XML como documento
 # descargable y el hash verifica que el contenido no cambio.
 DOCS=$(curl -sS "${BASE}/documents" "${AUTH[@]}")
-DOC_ID=$(echo "${DOCS}" | jq -r '.data[0].id // empty')
-DOC_HASH=$(echo "${DOCS}" | jq -r '.data[0].sha256 // empty')
+# Se filtra por tipo: el comprobante de la venta puede ser mas reciente y con
+# la misma marca de tiempo, y el orden dejaria de ser determinista.
+DOC_ID=$(echo "${DOCS}" | jq -r '[.data[] | select(.kind == "INVOICE_XML")][0].id // empty')
+DOC_HASH=$(echo "${DOCS}" | jq -r '[.data[] | select(.kind == "INVOICE_XML")][0].sha256 // empty')
 check_positivo "la factura deja su documento XML" \
   "$(echo "${DOCS}" | jq '[.data[] | select(.kind == "INVOICE_XML")] | length')"
 curl -sS -o /tmp/opencode/documento.xml "${BASE}/documents/${DOC_ID}" "${AUTH[@]}"
@@ -707,6 +714,22 @@ fi
 
 IAM_SIN=$(docker exec kubo-postgres psql -U kubo_iam -d kubo_iam -tAc "select count(*) from users" 2>/dev/null | tr -d '[:space:]')
 check "RLS en IAM: sin contexto de negocio no hay filas" "0" "${IAM_SIN}"
+
+# Plan comercial (ADR-0021): el cupo del plan se aplica por negocio y el sexto
+# usuario activo del plan community se rechaza. Se hace con el negocio aislado
+# para no tocar la demo.
+PLANES=$(curl -sS "${BASE}/tenants/plans" "${AUTH[@]}")
+check_positivo "el catalogo de planes esta disponible" "$(echo "${PLANES}" | jq 'length')"
+for i in 1 2 3 4; do
+  curl -sS -o /dev/null -X POST "${BASE}/users" -H "Authorization: Bearer ${OTRO_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -d "{\"fullName\":\"Vendedor ${i}\",\"email\":\"cupo${i}-$(date +%s)@kubo.local\",\"password\":\"Vendedor123!\",\"role\":\"SELLER\"}"
+done
+check "el plan limita los usuarios activos" "PLAN_LIMIT_REACHED" \
+  "$(curl -sS -X POST "${BASE}/users" -H "Authorization: Bearer ${OTRO_TOKEN}" \
+     -H 'Content-Type: application/json' \
+     -d "{\"fullName\":\"Uno mas\",\"email\":\"cupo6-$(date +%s)@kubo.local\",\"password\":\"Vendedor123!\",\"role\":\"SELLER\"}" \
+     | jq -r '.code // "OK"')"
 
 # ---------------------------------------------------------------------------
 echo

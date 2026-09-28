@@ -237,6 +237,38 @@ services:
     mem_limit: 512m
     networks: [kubo-net]
 
+  # Operador de respaldos (ADR-0022): perfil `backup`. En bucle diario con
+  # `--profile backup up -d kubo-backup`; `make backup-operator` corre un ciclo
+  # suelto con verificacion de restauracion.
+  kubo-backup:
+    build:
+      context: ./backup
+    container_name: kubo-backup
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["backup"]
+    # Con el usuario del host: los respaldos quedan en el volumen del dueno y no
+    # de root (el ciclo no necesita privilegios).
+    user: "${KUBO_BACKUP_UID:-1000}:${KUBO_BACKUP_GID:-1000}"
+    environment:
+      KUBO_POSTGRES_ROOT_PASSWORD: ${KUBO_POSTGRES_ROOT_PASSWORD:-kubo_root_dev}
+      KUBO_BACKUP_RETENTION_DAYS: ${KUBO_BACKUP_RETENTION_DAYS:-14}
+      KUBO_BACKUP_INTERVAL_HOURS: ${KUBO_BACKUP_INTERVAL_HOURS:-24}
+      KUBO_BACKUP_OFFSITE_DIR: /offsite
+      KUBO_ENV_FILE: /config/.env
+    volumes:
+      - ./backups:/backups
+      - ./.env:/config/.env:ro
+      - documents:/documents:ro
+      - ${KUBO_BACKUP_OFFSITE_DIR:-./backups-offsite}:/offsite
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    mem_limit: 256m
+    networks: [kubo-net]
+
   kubo-analytics:
     build:
       context: ../kubo-analytics

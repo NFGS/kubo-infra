@@ -10,6 +10,7 @@
 
 # Respaldos locales (nunca se versionan: contienen datos del negocio)
 backups/
+backups-offsite/
 
 # Certificados de la malla interna (P-28): artefacto de despliegue, nunca al repo
 certs/
