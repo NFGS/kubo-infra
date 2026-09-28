@@ -70,6 +70,8 @@
           done
           sed -i "s|^KUBO_ADMIN_PASSWORD=.*|KUBO_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
           sed -i "s|^KUBO_PLATFORM_ADMIN_PASSWORD=.*|KUBO_PLATFORM_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
+          # Webhook del proveedor de pagos (F6.6): 64 hexadecimales para HMAC-SHA256.
+          sed -i "s|^KUBO_PAYMENTS_WEBHOOK_SECRET=.*|KUBO_PAYMENTS_WEBHOOK_SECRET=$(openssl rand -hex 32)|" .env
           chmod 600 .env
         chdir: "{{ kubo_dir }}/kubo-infra"
         creates: "{{ kubo_dir }}/kubo-infra/.env"

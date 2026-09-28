@@ -769,6 +769,50 @@ check "el plan limita los usuarios activos" "PLAN_LIMIT_REACHED" \
      -d "{\"fullName\":\"Uno mas\",\"email\":\"cupo6-$(date +%s)@kubo.local\",\"password\":\"Vendedor123!\",\"role\":\"SELLER\"}" \
      | jq -r '.code // "OK"')"
 
+# Puerto de cobro (F6.6, ADR-0026): el negocio pide pagar, el proveedor confirma
+# por webhook firmado, y un webhook repetido NO extiende dos veces el plan.
+# Se usa el negocio aislado para no tocar la demo.
+PAGO=$(curl -sS -X POST "${BASE}/tenants/me/payments" -H "Authorization: Bearer ${OTRO_TOKEN}" \
+  -H 'Content-Type: application/json' -d '{"plan":"pro","cycle_months":1}')
+PAGO_REF=$(echo "${PAGO}" | jq -r '.reference // empty')
+check "la intencion de pago toma el precio del catalogo" "49000.00" "$(echo "${PAGO}" | jq -r '.amount // empty')"
+check "la intencion queda pendiente de confirmar" "PENDING" "$(echo "${PAGO}" | jq -r '.status // empty')"
+
+RENOV_ANTES=$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // ""')
+
+SECRETO_WH=$(docker exec kubo-iam printenv KUBO_PAYMENTS_WEBHOOK_SECRET 2>/dev/null | tr -d '[:space:]')
+CUERPO_WH="{\"reference\":\"${PAGO_REF}\",\"amount\":49000,\"status\":\"APPROVED\"}"
+FIRMA_WH=$(printf '%s' "${CUERPO_WH}" | openssl dgst -sha256 -hmac "${SECRETO_WH}" | awk '{print $2}')
+
+check "el webhook sin firma valida se rechaza" "401" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/webhooks/payments/manual" \
+     -H 'Content-Type: application/json' -d "${CUERPO_WH}")"
+
+check "el webhook firmado confirma el pago" "ok" \
+  "$(curl -sS -X POST "${BASE}/webhooks/payments/manual" -H "X-Kubo-Signature: ${FIRMA_WH}" \
+     -H 'Content-Type: application/json' -d "${CUERPO_WH}" | jq -r '.recibido // "FALLO"')"
+
+RENOV_PAGADO=$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // ""')
+check "el pago extiende la vigencia del plan" "true" \
+  "$([[ -n "${RENOV_PAGADO}" && "${RENOV_PAGADO}" > "${RENOV_ANTES}" ]] && echo true || echo false)"
+check "el pago deja el plan contratado" "pro" \
+  "$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.plan // empty')"
+
+check "un webhook repetido responde igual" "ok" \
+  "$(curl -sS -X POST "${BASE}/webhooks/payments/manual" -H "X-Kubo-Signature: ${FIRMA_WH}" \
+     -H 'Content-Type: application/json' -d "${CUERPO_WH}" | jq -r '.recibido // "FALLO"')"
+check "y NO extiende dos veces el plan (idempotencia)" "${RENOV_PAGADO}" \
+  "$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // ""')"
+
+# Un monto que no coincide con la intencion se rechaza (el precio manda el catalogo).
+PAGO_2=$(curl -sS -X POST "${BASE}/tenants/me/payments" -H "Authorization: Bearer ${OTRO_TOKEN}" \
+  -H 'Content-Type: application/json' -d '{"plan":"pro","cycle_months":1}')
+CUERPO_MAL="{\"reference\":\"$(echo "${PAGO_2}" | jq -r '.reference')\",\"amount\":1000,\"status\":\"APPROVED\"}"
+FIRMA_MAL=$(printf '%s' "${CUERPO_MAL}" | openssl dgst -sha256 -hmac "${SECRETO_WH}" | awk '{print $2}')
+check "un monto distinto al de la intencion se rechaza" "AMOUNT_MISMATCH" \
+  "$(curl -sS -X POST "${BASE}/webhooks/payments/manual" -H "X-Kubo-Signature: ${FIRMA_MAL}" \
+     -H 'Content-Type: application/json' -d "${CUERPO_MAL}" | jq -r '.code // "OK"')"
+
 # ---------------------------------------------------------------------------
 echo
 echo "[9/11] Recuperacion de contrasena"

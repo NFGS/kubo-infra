@@ -123,6 +123,8 @@ services:
       # Operador de plataforma (F6.4): se crea al arrancar si no existe.
       KUBO_PLATFORM_ADMIN_EMAIL: ${KUBO_PLATFORM_ADMIN_EMAIL:-operador@kubo.local}
       KUBO_PLATFORM_ADMIN_PASSWORD: ${KUBO_PLATFORM_ADMIN_PASSWORD:-Operador123!}
+      # Webhook del proveedor de pagos (F6.6): firma HMAC del cuerpo.
+      KUBO_PAYMENTS_WEBHOOK_SECRET: ${KUBO_PAYMENTS_WEBHOOK_SECRET:-}
       KUBO_INTERNAL_TLS: "true"
       KUBO_TLS_CERT: /certs/iam.crt
       KUBO_TLS_KEY: /certs/iam.key
