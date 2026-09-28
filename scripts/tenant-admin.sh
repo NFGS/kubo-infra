@@ -2,9 +2,10 @@
 # ---------------------------------------------------------------------------
 # Administracion de negocios (P-27, ADR-0024).
 #
-#   tenant-admin.sh list                          Negocios: slug, plan, estado y usuarios activos
+#   tenant-admin.sh list                          Negocios: slug, plan, estado, cupo y renovacion
 #   tenant-admin.sh suspend <slug|correo>         Suspende el negocio (reversible, no toca datos)
 #   tenant-admin.sh activate <slug|correo>        Reactiva el negocio
+#   tenant-admin.sh renew <slug|correo> [dias]    Registra el pago: extiende la renovacion (30 dias)
 #
 # Es la superficie del operador mientras no exista un rol de plataforma: el
 # dueno del despliegue ya tiene acceso al servidor, y un script no agrega
@@ -38,10 +39,11 @@ objetivo="${2:-}"
 
 case "${accion}" in
   list)
-    echo "slug|plan|estado|usuarios_activos"
+    echo "slug|plan|estado|usuarios_activos|renueva"
     psql_iam "
       select t.slug || '|' || t.plan || '|' || t.status || '|' ||
-             count(u.id) filter (where u.status = 'ACTIVE')
+             count(u.id) filter (where u.status = 'ACTIVE') || '|' ||
+             coalesce(to_char(t.plan_renews_at, 'YYYY-MM-DD'), 'sin fecha')
       from tenants t
       left join users u on u.tenant_id = t.id
       group by t.id
@@ -81,8 +83,47 @@ case "${accion}" in
     echo "[kubo] negocio ${afectados} -> ${estado}"
     ;;
 
+  renew)
+    if [[ -z "${objetivo}" ]]; then
+      echo "Falta el negocio: slug o correo de un usuario" >&2
+      exit 1
+    fi
+
+    if [[ ! "${objetivo}" =~ ^[A-Za-z0-9@._-]+$ ]]; then
+      echo "El negocio solo admite letras, numeros, arroba, punto, guion y guion bajo" >&2
+      exit 1
+    fi
+
+    dias="${3:-30}"
+    if [[ ! "${dias}" =~ ^[0-9]+$ ]] || [[ "${dias}" -lt 1 ]]; then
+      echo "Los dias deben ser un entero positivo" >&2
+      exit 1
+    fi
+
+    # La fecha se extiende desde hoy o desde la renovacion vigente, la que sea
+    # mayor: pagar antes de vencer no regala dias.
+    afectados=$(psql_iam "
+      with negocio as (
+        select id from tenants where slug = '${objetivo}'
+        union
+        select tenant_id from users where lower(email) = lower('${objetivo}')
+      )
+      update tenants
+      set plan_renews_at = greatest(coalesce(plan_renews_at, current_date), current_date)
+                           + make_interval(days => ${dias})
+      where id in (select id from negocio)
+      returning slug || ' hasta ' || to_char(plan_renews_at, 'YYYY-MM-DD')")
+
+    if [[ -z "${afectados}" ]]; then
+      echo "No se encontro un negocio para '${objetivo}'" >&2
+      exit 1
+    fi
+
+    echo "[kubo] renovado ${afectados}"
+    ;;
+
   *)
-    echo "Uso: tenant-admin.sh list | suspend <slug|correo> | activate <slug|correo>" >&2
+    echo "Uso: tenant-admin.sh list | suspend <slug|correo> | activate <slug|correo> | renew <slug|correo> [dias]" >&2
     exit 1
     ;;
 esac

@@ -728,6 +728,20 @@ check "al reactivar el negocio vuelve a entrar" "true" \
   "$([[ -n "$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
        -d "{\"email\":\"${OTRO_EMAIL}\",\"password\":\"OtraClave123!\"}" | jq -r '.accessToken // empty')" ]] && echo true || echo false)"
 
+# Cobro manual (F6.2): el operador registra el pago renovando la fecha.
+"${ROOT_SMOKE}/scripts/tenant-admin.sh" renew "${OTRO_EMAIL}" 30 >/dev/null
+RENOVADA_ESPERADA="$(date -d "+30 days" +%F)"
+check "la renovacion del plan queda registrada" "${RENOVADA_ESPERADA}" \
+  "$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // empty')"
+
+# Uso del plan (F6.1): el negocio ve lo que consume y el operador lo consulta.
+USO=$(curl -sS "${BASE}/usage" "${AUTH[@]}")
+check_positivo "el uso reporta las bodegas" "$(echo "${USO}" | jq '.data.warehouses')"
+check_positivo "el uso reporta las ventas del mes" "$(echo "${USO}" | jq '.data.sales_month.count')"
+check_positivo "el uso reporta los documentos" "$(echo "${USO}" | jq '.data.documents.count')"
+check_positivo "el perfil reporta los usuarios activos" \
+  "$(curl -sS "${BASE}/tenants/me" "${AUTH[@]}" | jq '.data.activeUsers')" 
+
 # Plan comercial (ADR-0021): el cupo del plan se aplica por negocio y el sexto
 # usuario activo del plan community se rechaza. Se hace con el negocio aislado
 # para no tocar la demo.
