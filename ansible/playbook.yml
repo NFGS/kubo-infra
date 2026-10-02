@@ -22,10 +22,16 @@
     # Puertos publicos: la PWA y el borde TLS. Los servicios internos y las
     # bases NO se publican (la malla mTLS los protege y no necesitan salir).
     kubo_public_ports: ["3000", "3080", "3443"]
+    # Claves del despliegue: cada familia se genera con la longitud que el
+    # servicio exige (32 bytes para AES-256-GCM, 64+ para las semillas de
+    # Phoenix/Rails). No van en el repositorio: se crean en el host.
     kubo_secret_keys: >-
       KUBO_POSTGRES_ROOT_PASSWORD KUBO_IAM_DB_PASSWORD KUBO_CRM_DB_PASSWORD
-      KUBO_ERP_DB_PASSWORD KUBO_RABBITMQ_PASSWORD KUBO_ERP_SECRET_KEY_BASE
-      KUBO_TOTP_ENCRYPTION_KEY
+      KUBO_ERP_DB_PASSWORD KUBO_RABBITMQ_PASSWORD
+    kubo_secret_keys_32: >-
+      KUBO_FIELD_ENCRYPTION_KEY KUBO_BLIND_INDEX_KEY KUBO_TOTP_ENCRYPTION_KEY
+    kubo_secret_keys_64: >-
+      KUBO_ERP_SECRET_KEY_BASE KUBO_CRM_SECRET_KEY_BASE
 
   tasks:
     - name: Paquetes base
@@ -68,6 +74,21 @@
           for clave in {{ kubo_secret_keys }}; do
             sed -i "s|^${clave}=.*|${clave}=$(openssl rand -hex 24)|" .env
           done
+          # Claves de cifrado de 32 bytes (64 hexadecimales): el CRM y el TOTP
+          # rechazan longitudes menores y los valores de ejemplo.
+          for clave in {{ kubo_secret_keys_32 }}; do
+            sed -i "s|^${clave}=.*|${clave}=$(openssl rand -hex 32)|" .env
+          done
+          # Semillas de firma (Phoenix y Rails exigen 64+ caracteres).
+          for clave in {{ kubo_secret_keys_64 }}; do
+            sed -i "s|^${clave}=.*|${clave}=$(openssl rand -hex 64)|" .env
+          done
+          # Llave RSA de firma JWT en una sola linea (PKCS#8 en base64; el IAM
+          # la normaliza igual que un PEM). Sin ella, los tokens no sobreviven
+          # un reinicio ni funcionan con varias replicas.
+          JWT_KEY=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null \
+            | openssl pkey -outform DER 2>/dev/null | base64 -w0)
+          sed -i "s|^KUBO_JWT_PRIVATE_KEY=.*|KUBO_JWT_PRIVATE_KEY=${JWT_KEY}|" .env
           sed -i "s|^KUBO_ADMIN_PASSWORD=.*|KUBO_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
           sed -i "s|^KUBO_PLATFORM_ADMIN_PASSWORD=.*|KUBO_PLATFORM_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
           # Webhook del proveedor de pagos (F6.6): 64 hexadecimales para HMAC-SHA256.

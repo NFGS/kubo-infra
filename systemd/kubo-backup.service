@@ -6,7 +6,12 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/kubo
-ExecStart=/opt/kubo/kubo-infra/scripts/backup.sh
+# El ciclo programado es el del operador: respalda, retiene, RESTAURA en bases
+# de usar y tirar para verificar y deja el manifiesto con el resultado (es lo
+# que exige el chequeo de operacion). Corre como root del contenedor porque
+# /opt/kubo pertenece a root; el proceso no necesita privilegios en el host.
+Environment=KUBO_BACKUP_UID=0 KUBO_BACKUP_GID=0
+ExecStart=/usr/bin/docker compose -f kubo-infra/docker-compose.yml --profile backup run --rm kubo-backup --once
 # El respaldo puede tardar; se registra en el journal para auditoria.
 StandardOutput=journal
 StandardError=journal

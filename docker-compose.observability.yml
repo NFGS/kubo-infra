@@ -33,7 +33,7 @@ services:
     profiles: [observability]
     restart: unless-stopped
     ports:
-      - "${KUBO_GRAFANA_PORT:-3001}:3000"
+      - "127.0.0.1:${KUBO_GRAFANA_PORT:-3001}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${KUBO_GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${KUBO_GRAFANA_PASSWORD:-kubo_admin}

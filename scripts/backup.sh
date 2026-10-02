@@ -55,6 +55,8 @@ postgres=kubo_iam.dump,kubo_crm.dump,kubo_erp.dump
 mongo=kubo_analytics.archive
 documentos=documents.tar.gz
 retencion_dias=${RETENTION_DAYS}
+verificacion=no_ejecutada
+fuera_del_sitio=no_configurada
 EOF
 
 # Retencion: se eliminan los respaldos mas viejos que el limite.

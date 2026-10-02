@@ -29,7 +29,7 @@ services:
       POSTGRES_DB: postgres
       <<: *postgres-env
     ports:
-      - "${KUBO_POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${KUBO_POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/10-init-db.sh:ro
@@ -42,12 +42,12 @@ services:
     networks: [kubo-net]
 
   mongo:
-    image: mongo:8@sha256:5d7043a4ffe02b9ed1b6e0bab057546981af5ca0a79107e9c461e49bc44c0a7b
+    image: mongo:8.2@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
     container_name: kubo-mongo
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - "${KUBO_MONGO_PORT:-27018}:27017"
+      - "127.0.0.1:${KUBO_MONGO_PORT:-27018}:27017"
     volumes:
       - mongodata:/data/db
     healthcheck:
@@ -67,8 +67,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${KUBO_RABBITMQ_USER:-kubo}
       RABBITMQ_DEFAULT_PASS: ${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}
     ports:
-      - "${KUBO_RABBITMQ_PORT:-5673}:5672"
-      - "${KUBO_RABBITMQ_UI_PORT:-15673}:15672"
+      - "127.0.0.1:${KUBO_RABBITMQ_PORT:-5673}:5672"
+      - "127.0.0.1:${KUBO_RABBITMQ_UI_PORT:-15673}:15672"
     volumes:
       - rabbitdata:/var/lib/rabbitmq
     healthcheck:
@@ -86,7 +86,7 @@ services:
     logging: *default-logging
     command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "${KUBO_REDIS_PORT:-6380}:6379"
+      - "127.0.0.1:${KUBO_REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -146,7 +146,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
       JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
     ports:
-      - "${KUBO_IAM_PORT:-9081}:8081"
+      - "127.0.0.1:${KUBO_IAM_PORT:-9081}:8081"
     volumes:
       - ./certs:/certs:ro
     depends_on:
@@ -182,7 +182,7 @@ services:
       KUBO_TLS_CA: /certs/ca.crt
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
-      - "${KUBO_CRM_PORT:-9082}:8082"
+      - "127.0.0.1:${KUBO_CRM_PORT:-9082}:8082"
     volumes:
       - ./certs:/certs:ro
     depends_on:
@@ -222,7 +222,7 @@ services:
       KUBO_TLS_KEY: /certs/erp.key
       KUBO_TLS_CA: /certs/ca.crt
     ports:
-      - "${KUBO_ERP_PORT:-9083}:8083"
+      - "127.0.0.1:${KUBO_ERP_PORT:-9083}:8083"
     depends_on:
       postgres:
         condition: service_healthy
@@ -293,7 +293,7 @@ services:
       KUBO_TLS_CA: /certs/ca.crt
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
-      - "${KUBO_ANALYTICS_PORT:-9084}:8084"
+      - "127.0.0.1:${KUBO_ANALYTICS_PORT:-9084}:8084"
     volumes:
       - ./certs:/certs:ro
     depends_on:
@@ -345,7 +345,7 @@ services:
       # Trazas OTLP hacia el collector (P-07).
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
-      - "${KUBO_GATEWAY_PORT:-9080}:8080"
+      - "127.0.0.1:${KUBO_GATEWAY_PORT:-9080}:8080"
     depends_on:
       kubo-iam:
         condition: service_healthy
@@ -375,9 +375,9 @@ services:
     volumes:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
     ports:
-      - "${KUBO_OTEL_GRPC_PORT:-4317}:4317"
-      - "${KUBO_OTEL_HTTP_PORT:-4318}:4318"
-      - "${KUBO_OTEL_HEALTH_PORT:-13133}:13133"
+      - "127.0.0.1:${KUBO_OTEL_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${KUBO_OTEL_HTTP_PORT:-4318}:4318"
+      - "127.0.0.1:${KUBO_OTEL_HEALTH_PORT:-13133}:13133"
     healthcheck:
       # La imagen es distroless (sin shell ni cliente HTTP): la sonda interna
       # consulta el endpoint de salud desde el host o con curl a 13133.
@@ -400,6 +400,8 @@ services:
     environment:
       KUBO_TLS_DOMAIN: ${KUBO_TLS_DOMAIN:-localhost}
     ports:
+      # La PWA y el borde TLS son la cara publica del negocio: se publican en
+      # todas las interfaces. El resto de puertos solo escucha en loopback.
       - "${KUBO_TLS_HTTP_PORT:-3080}:80"
       - "${KUBO_TLS_HTTPS_PORT:-3443}:443"
     volumes:
@@ -429,6 +431,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
+      # Unica superficie que ve el negocio: la PWA.
       - "${KUBO_WEB_PORT:-3000}:80"
     depends_on:
       kubo-gateway:
