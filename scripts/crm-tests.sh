@@ -67,4 +67,6 @@ docker run --rm --network "${RED}" \
   -v "${ROOT}/kubo-crm/db:/app/db:ro" \
   -v "${ROOT}/kubo-crm/config:/app/config:ro" \
   --entrypoint bash "${IMAGEN}" -c \
-  'cd /app && bundle exec rails db:migrate >/dev/null && bundle exec ruby test/integration/rls_and_cipher_test.rb'
+  'cd /app && bundle exec rails db:migrate >/dev/null \
+     && bundle exec ruby test/integration/rls_and_cipher_test.rb \
+     && bundle exec ruby test/integration/customers_http_test.rb'
