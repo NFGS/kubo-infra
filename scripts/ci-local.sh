@@ -35,7 +35,7 @@ echo
 echo "Kubo · gate local de calidad"
 echo "================================================================"
 
-echo "[1/5] secretos"
+echo "[1/6] secretos"
 "${ROOT}/kubo-infra/scripts/secret-scan.sh" >/tmp/kubo-ci-secretos.log 2>&1
 if [[ $? -eq 0 ]]; then
   ok "escaneo de secretos sin hallazgos"
@@ -44,7 +44,7 @@ else
   grep "FALLA" /tmp/kubo-ci-secretos.log | sed 's/^/         /'
 fi
 
-echo "[2/5] pruebas unitarias e integracion"
+echo "[2/6] pruebas unitarias e integracion"
 paso "kubo-gateway (typecheck + tests)" bash -c "cd '${ROOT}/kubo-gateway' && npm run typecheck && npm test"
 paso "kubo-iam (mvn verify: unitarias + Testcontainers + cobertura >= 80%)" bash -c "cd '${ROOT}/kubo-iam' && mvn -q verify"
 paso "kubo-crm (cifrado + integracion RLS)" "${ROOT}/kubo-infra/scripts/crm-tests.sh"
@@ -53,13 +53,16 @@ paso "kubo-erp (dinero, outbox, integracion RLS)" "${ROOT}/kubo-infra/scripts/er
 paso "kubo-analytics (pytest + cobertura + integracion MongoDB)" "${ROOT}/kubo-infra/scripts/analytics-tests.sh"
 paso "kubo-web (typecheck + vitest con cobertura)" bash -c "cd '${ROOT}/kubo-web' && npm run typecheck && npm test"
 
-echo "[3/5] contratos OpenAPI"
+echo "[3/6] contratos OpenAPI"
 paso "contratos contra el sistema en ejecucion" bash -c "cd '${ROOT}' && node kubo-gateway/scripts/contracts.mjs"
 
-echo "[4/5] prueba de humo"
+echo "[4/6] contratos del consumidor (Pact)"
+paso "pact consumidor y proveedor contra el sistema" bash -c "cd '${ROOT}' && make pact"
+
+echo "[5/6] prueba de humo"
 paso "humo end-to-end" bash -c "'${ROOT}/kubo-infra/scripts/smoke.sh'"
 
-echo "[5/5] E2E y accesibilidad"
+echo "[6/6] E2E y accesibilidad"
 # Cada pantalla restaura la sesion (refresh + me) y eso consume el limite de
 # autenticacion; se eleva solo durante la corrida y se restaura al terminar.
 COMPOSE_FILE="${ROOT}/kubo-infra/docker-compose.yml"

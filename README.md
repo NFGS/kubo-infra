@@ -21,6 +21,8 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | `scripts/tenant-admin.sh` | Superficie del operador: listar, suspender, reactivar, renovar y uso |
 | `scripts/gen-internal-certs.sh` | CA interna y certificados de la malla mTLS (P-28) |
 | `backup/` | Operador de respaldos: respaldo → retención → verificación → manifiesto (ADR-0022) |
+| `load/pos.js` · `load/catalog.js` | Carga k6: 50 cajas en el POS y catálogo de 50.000 productos |
+| `load/seed-big-catalog.sh` | Siembra/limpia el catálogo voluminoso de la demo (`make load-big`) |
 | `ansible/` | Instalación remota con secretos únicos generados en el host |
 | `scripts/foreign-stop.sh` | Detiene contenedores ajenos para liberar RAM |
 | `scripts/foreign-start.sh` | Reactiva los contenedores detenidos |
