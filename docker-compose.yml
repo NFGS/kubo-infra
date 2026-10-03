@@ -110,9 +110,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/kubo_iam
       SPRING_DATASOURCE_USERNAME: kubo_iam
       SPRING_DATASOURCE_PASSWORD: ${KUBO_IAM_DB_PASSWORD:-kubo_iam_dev}
-      KUBO_SEED_ENABLED: "true"
+      KUBO_SEED_ENABLED: ${KUBO_SEED_ENABLED:-false}
       KUBO_ADMIN_EMAIL: ${KUBO_ADMIN_EMAIL:-admin@kubo.local}
-      KUBO_ADMIN_PASSWORD: ${KUBO_ADMIN_PASSWORD:-Admin123!}
+      KUBO_ADMIN_PASSWORD: ${KUBO_ADMIN_PASSWORD:?KUBO_ADMIN_PASSWORD es obligatoria (ver .env.example)}
       KUBO_TENANT_NAME: ${KUBO_TENANT_NAME:-Tienda La Esquina}
       KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       # Llave RSA para firmar los JWT. Si se deja vacia, IAM genera una efimera y
@@ -122,7 +122,7 @@ services:
       KUBO_TOTP_ENCRYPTION_KEY: ${KUBO_TOTP_ENCRYPTION_KEY:-}
       # Operador de plataforma (F6.4): se crea al arrancar si no existe.
       KUBO_PLATFORM_ADMIN_EMAIL: ${KUBO_PLATFORM_ADMIN_EMAIL:-operador@kubo.local}
-      KUBO_PLATFORM_ADMIN_PASSWORD: ${KUBO_PLATFORM_ADMIN_PASSWORD:-Operador123!}
+      KUBO_PLATFORM_ADMIN_PASSWORD: ${KUBO_PLATFORM_ADMIN_PASSWORD:?KUBO_PLATFORM_ADMIN_PASSWORD es obligatoria (ver .env.example)}
       # Webhook del proveedor de pagos (F6.6): firma HMAC del cuerpo.
       KUBO_PAYMENTS_WEBHOOK_SECRET: ${KUBO_PAYMENTS_WEBHOOK_SECRET:-}
       KUBO_INTERNAL_TLS: "true"
@@ -173,7 +173,7 @@ services:
       DATABASE_URL: postgres://kubo_crm:${KUBO_CRM_DB_PASSWORD:-kubo_crm_dev}@postgres:5432/kubo_crm
       KUBO_FIELD_ENCRYPTION_KEY: ${KUBO_FIELD_ENCRYPTION_KEY}
       KUBO_BLIND_INDEX_KEY: ${KUBO_BLIND_INDEX_KEY}
-      SECRET_KEY_BASE: ${KUBO_CRM_SECRET_KEY_BASE:-kubo_crm_dev_secret_key_base_cambiar_en_produccion_0123456789}
+      SECRET_KEY_BASE: ${KUBO_CRM_SECRET_KEY_BASE:?KUBO_CRM_SECRET_KEY_BASE es obligatoria (ver .env.example)}
       KUBO_RUN_MIGRATIONS: "true"
       PORT: "8082"
       KUBO_INTERNAL_TLS: "true"
@@ -208,7 +208,7 @@ services:
       MIX_ENV: prod
       DATABASE_URL: ecto://kubo_erp:${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}@postgres:5432/kubo_erp
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672
-      SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:-kubo_dev_secret_key_base_please_change_in_production_0123456789}
+      SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:?KUBO_ERP_SECRET_KEY_BASE es obligatoria (ver .env.example)}
       KUBO_TIMEZONE: ${KUBO_TIMEZONE:-America/Bogota}
       PORT: "8083"
       KUBO_RUN_MIGRATIONS: "true"

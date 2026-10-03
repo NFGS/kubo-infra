@@ -19,9 +19,11 @@
     kubo_dir: /opt/kubo
     kubo_repo: "{{ lookup('env', 'KUBO_REPO') | default('https://gitlab.com/kubo/kubo.git', true) }}"
     kubo_version: "{{ lookup('env', 'KUBO_VERSION') | default('main', true) }}"
-    # Puertos publicos: la PWA y el borde TLS. Los servicios internos y las
-    # bases NO se publican (la malla mTLS los protege y no necesitan salir).
-    kubo_public_ports: ["3000", "3080", "3443"]
+    # Puertos publicos: SOLO el borde TLS de Caddy (3080 redirige a 3443). La
+    # PWA se sirve a traves de el, de modo que todo el trafico del negocio va
+    # cifrado y la cookie de refresco viaja con Secure. Los servicios internos,
+    # las bases y el puerto directo de la PWA NO se publican.
+    kubo_public_ports: ["3080", "3443"]
     # Claves del despliegue: cada familia se genera con la longitud que el
     # servicio exige (32 bytes para AES-256-GCM, 64+ para las semillas de
     # Phoenix/Rails). No van en el repositorio: se crean en el host.
@@ -90,6 +92,9 @@
             | openssl pkey -outform DER 2>/dev/null | base64 -w0)
           sed -i "s|^KUBO_JWT_PRIVATE_KEY=.*|KUBO_JWT_PRIVATE_KEY=${JWT_KEY}|" .env
           sed -i "s|^KUBO_ADMIN_PASSWORD=.*|KUBO_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
+          # Todo el acceso va por HTTPS (solo Caddy es publico): la cookie de
+          # refresco sale con Secure.
+          sed -i "s|^KUBO_COOKIE_SECURE=.*|KUBO_COOKIE_SECURE=true|" .env
           sed -i "s|^KUBO_PLATFORM_ADMIN_PASSWORD=.*|KUBO_PLATFORM_ADMIN_PASSWORD=$(openssl rand -base64 12)|" .env
           # Webhook del proveedor de pagos (F6.6): 64 hexadecimales para HMAC-SHA256.
           sed -i "s|^KUBO_PAYMENTS_WEBHOOK_SECRET=.*|KUBO_PAYMENTS_WEBHOOK_SECRET=$(openssl rand -hex 32)|" .env

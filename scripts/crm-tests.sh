@@ -71,4 +71,4 @@ docker run --rm --network "${RED}" \
   -v "${ROOT}/kubo-crm/config:/app/config:ro" \
   --entrypoint bash "${IMAGEN}" -c \
   'cd /app && bundle exec rails db:migrate >/dev/null \
-     && bundle exec ruby -Itest -e "Dir[%q{test/integration/*_test.rb}].sort.each { |archivo| require File.expand_path(archivo) }"'
+     && bundle exec ruby -Itest -e "Dir[%q{test/field_cipher_test.rb}, %q{test/integration/*_test.rb}].sort.each { |archivo| require File.expand_path(archivo) }"'
