@@ -23,6 +23,7 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | `backup/` | Operador de respaldos: respaldo → retención → verificación → manifiesto (ADR-0022) |
 | `load/pos.js` · `load/catalog.js` | Carga k6: 50 cajas en el POS y catálogo de 50.000 productos |
 | `load/seed-big-catalog.sh` | Siembra/limpia el catálogo voluminoso de la demo (`make load-big`) |
+| `scripts/github-push.sh` | Publica los 9 repositorios en GitHub con `gh` autenticado (`make push-github`) |
 | `ansible/` | Instalación remota con secretos únicos generados en el host |
 | `scripts/foreign-stop.sh` | Detiene contenedores ajenos para liberar RAM |
 | `scripts/foreign-start.sh` | Reactiva los contenedores detenidos |
