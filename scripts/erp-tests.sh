@@ -62,6 +62,7 @@ fi
 
 # Se montan `lib/` y `config/` ademas de `test/`: la imagen se compila en
 # MIX_ENV=prod y puede estar desactualizada respecto al arbol de trabajo.
+# La corrida completa con `--cover` aplica el ratchet de cobertura de mix.exs.
 echo "[erp-tests] pruebas de integracion contra PostgreSQL real"
 docker run --rm -m 3g --network "${RED}" \
   -e MIX_ENV=test \
@@ -72,4 +73,5 @@ docker run --rm -m 3g --network "${RED}" \
   -v "${ROOT}/kubo-erp/lib:/app/lib:ro" \
   -v "${ROOT}/kubo-erp/config:/app/config:ro" \
   -v "${ROOT}/kubo-erp/priv:/app/priv:ro" \
-  --entrypoint bash "${IMAGEN}" -c 'cd /app && mix ecto.migrate >/dev/null && mix test test/kubo_erp/integration'
+  -v "${ROOT}/kubo-erp/mix.exs:/app/mix.exs:ro" \
+  --entrypoint bash "${IMAGEN}" -c 'cd /app && mix ecto.migrate >/dev/null && mix test --cover'

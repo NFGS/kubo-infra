@@ -57,10 +57,13 @@ if [[ "${existe}" != "1" ]]; then
 fi
 
 # Se montan `test/`, `app/`, `db/` y `config/` para usar el arbol de trabajo, no
-# lo que quedo horneado en la imagen (que se construye en produccion).
+# lo que quedo horneado en la imagen (que se construye en produccion). La corrida
+# es un solo proceso para que SimpleCov agregue la cobertura de toda la suite y
+# aplique su gate; `BUNDLE_WITHOUT` vacio activa las gemas de prueba.
 echo "[crm-tests] pruebas de integracion contra PostgreSQL real"
 docker run --rm --network "${RED}" \
   -e RAILS_ENV=test \
+  -e BUNDLE_WITHOUT="" \
   -e TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}" \
   -v "${ROOT}/kubo-crm/test:/app/test:ro" \
   -v "${ROOT}/kubo-crm/app:/app/app:ro" \
@@ -68,5 +71,4 @@ docker run --rm --network "${RED}" \
   -v "${ROOT}/kubo-crm/config:/app/config:ro" \
   --entrypoint bash "${IMAGEN}" -c \
   'cd /app && bundle exec rails db:migrate >/dev/null \
-     && bundle exec ruby test/integration/rls_and_cipher_test.rb \
-     && bundle exec ruby test/integration/customers_http_test.rb'
+     && bundle exec ruby -Itest -e "Dir[%q{test/integration/*_test.rb}].sort.each { |archivo| require File.expand_path(archivo) }"'

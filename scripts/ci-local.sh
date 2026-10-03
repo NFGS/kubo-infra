@@ -51,7 +51,7 @@ paso "kubo-crm (cifrado + integracion RLS)" "${ROOT}/kubo-infra/scripts/crm-test
 paso "kubo-erp (dinero, outbox, integracion RLS)" "${ROOT}/kubo-infra/scripts/erp-tests.sh"
 
 paso "kubo-analytics (pytest + cobertura + integracion MongoDB)" "${ROOT}/kubo-infra/scripts/analytics-tests.sh"
-paso "kubo-web (typecheck)" bash -c "cd '${ROOT}/kubo-web' && npm run typecheck"
+paso "kubo-web (typecheck + vitest con cobertura)" bash -c "cd '${ROOT}/kubo-web' && npm run typecheck && npm test"
 
 echo "[3/5] contratos OpenAPI"
 paso "contratos contra el sistema en ejecucion" bash -c "cd '${ROOT}' && node kubo-gateway/scripts/contracts.mjs"
