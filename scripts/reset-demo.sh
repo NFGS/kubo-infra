@@ -40,11 +40,20 @@ docker exec kubo-postgres psql -U kubo_root -d kubo_crm -q -c "DELETE FROM custo
   && echo "  crm: clientes eliminados"
 
 # --- ERP: ventas, kardex y catalogo ------------------------------------------
+# Facturas y notas credito incluidas: sus numeros (FE-…) se derivan de la
+# secuencia de ventas, y si sobreviven al reinicio del contador la primera
+# factura nueva choca con el indice unico (tenant_id, number).
 docker exec kubo-postgres psql -U kubo_root -d kubo_erp -q -c "
-  TRUNCATE purchase_items, purchases, suppliers, sale_items, sales, stock_movements, products CASCADE;
-  TRUNCATE outbox_events;
+  TRUNCATE purchase_items, purchases, suppliers, sale_items, sales, stock_movements, products, invoices, credit_notes CASCADE;
+  TRUNCATE outbox_events, documents;
   UPDATE tenant_counters SET sale_seq = 0, purchase_seq = 0;
-" && echo "  erp: ventas, compras, kardex, catalogo y contadores reiniciados"
+" && echo "  erp: ventas, compras, kardex, catalogo, facturas y contadores reiniciados"
+
+# El volumen de documentos guarda XML y PDF de la demo anterior: se vacia para
+# que la pestana de Documentos no muestre archivos de corridas viejas.
+docker run --rm -v kubo_documents:/documents alpine \
+  sh -c 'find /documents -mindepth 1 -delete' >/dev/null 2>&1 \
+  && echo "  documentos: volumen vaciado"
 
 # --- Analitica: modelo de lectura --------------------------------------------
 docker exec kubo-mongo mongosh kubo_analytics --quiet --eval "
