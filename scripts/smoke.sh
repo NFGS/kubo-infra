@@ -752,9 +752,13 @@ check "al reactivar el negocio vuelve a entrar" "true" \
 
 # Cobro manual (F6.2): el operador registra el pago renovando la fecha.
 "${ROOT_SMOKE}/scripts/tenant-admin.sh" renew "${OTRO_EMAIL}" 30 >/dev/null
-RENOVADA_ESPERADA="$(date -d "+30 days" +%F)"
+RENOVADA_ESPERADA="$(TZ=America/Bogota date -d "+30 days" +%F)"
 check "la renovacion del plan queda registrada" "${RENOVADA_ESPERADA}" \
   "$(curl -sS "${BASE}/tenants/me" -H "Authorization: Bearer ${OTRO_TOKEN}" | jq -r '.data.planRenewsAt // empty')"
+
+# El intento invalido de esta prueba alimenta el contador del operador (P-11):
+# se limpia antes para que el humo sea repetible sin bloquear al operador real.
+"${ROOT_SMOKE}/scripts/tenant-admin.sh" platform-reset >/dev/null
 
 # Reino de plataforma (F6.4, ADR-0025): el acceso del operador SIEMPRE pide el
 # codigo (segundo factor obligatorio) y un token de negocio no entra al panel.

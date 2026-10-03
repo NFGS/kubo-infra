@@ -13,10 +13,15 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | `systemd/kubo-backup.*` | Respaldo diario programado (03:30) |
 | `scripts/init-db.sh` | Crea una base de datos y un rol aislado por microservicio |
 | `scripts/seed.sh` | Carga datos de demostracion (clientes, productos, ventas) |
-| `scripts/smoke.sh` | Prueba el flujo completo end-to-end (87 comprobaciones) |
+| `scripts/smoke.sh` | Prueba el flujo completo end-to-end (184 comprobaciones) |
 | `scripts/bus-drill.sh` | Simulacro: caida del bus sin perdida de eventos (outbox) |
 | `scripts/backup.sh` | Respaldo de PostgreSQL, MongoDB y la configuracion |
 | `scripts/restore-drill.sh` | Restaura en bases de prueba y compara filas |
+| `scripts/operacion-check.sh` | Chequeo diario de operación (salud, respaldo verificado, disco, certificados) |
+| `scripts/tenant-admin.sh` | Superficie del operador: listar, suspender, reactivar, renovar y uso |
+| `scripts/gen-internal-certs.sh` | CA interna y certificados de la malla mTLS (P-28) |
+| `backup/` | Operador de respaldos: respaldo → retención → verificación → manifiesto (ADR-0022) |
+| `ansible/` | Instalación remota con secretos únicos generados en el host |
 | `scripts/foreign-stop.sh` | Detiene contenedores ajenos para liberar RAM |
 | `scripts/foreign-start.sh` | Reactiva los contenedores detenidos |
 
@@ -55,7 +60,7 @@ openssl rand -hex 32   # KUBO_BLIND_INDEX_KEY
 
 ```bash
 make up             # desde la raiz del workspace
-make smoke          # 87 comprobaciones end-to-end
+make smoke          # 184 comprobaciones end-to-end
 make bus-drill      # caida del bus sin perdida de eventos
 make backup         # respaldo de bases y configuracion
 make restore-drill  # simulacro de restauracion cronometrado
