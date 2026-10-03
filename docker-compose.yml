@@ -206,6 +206,9 @@ services:
     logging: *default-logging
     environment:
       MIX_ENV: prod
+      # Conexiones a Postgres del ERP: 50 cajas concurrentes compiten por el
+      # pool, y el cuello de la caja se mide con el (P-10).
+      POOL_SIZE: ${KUBO_ERP_POOL_SIZE:-10}
       DATABASE_URL: ecto://kubo_erp:${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}@postgres:5432/kubo_erp
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672
       SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:?KUBO_ERP_SECRET_KEY_BASE es obligatoria (ver .env.example)}

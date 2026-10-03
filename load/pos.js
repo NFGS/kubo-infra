@@ -17,18 +17,23 @@ import { Counter } from 'k6/metrics';
 // distingue de un 429 o un 5xx, y eso hace la prueba diagnosticable.
 const saleStatus = new Counter('sale_status');
 
-const BASE = __ENV.KUBO_API ?? 'http://host.docker.internal:9080/api/v1';
+// `make load` corre k6 en la red interna del compose (el gateway solo escucha
+// en loopback del host desde el endurecimiento de puertos); KUBO_API permite
+// apuntar a otro entorno.
+const BASE = __ENV.KUBO_API ?? 'http://kubo-gateway:8080/api/v1';
 const EMAIL = __ENV.KUBO_ADMIN_EMAIL ?? 'admin@kubo.local';
 const PASSWORD = __ENV.KUBO_ADMIN_PASSWORD ?? 'Admin123!';
 
 const PRODUCTOS = 10;
 const STOCK_INICIAL = 1000000;
+// Numero de cajas simultaneas; parametrizable para medir el escalado.
+const VUS = Number(__ENV.KUBO_VUS ?? 50);
 
 export const options = {
   scenarios: {
     pos: {
       executor: 'constant-vus',
-      vus: 50,
+      vus: VUS,
       duration: '30s',
     },
   },
