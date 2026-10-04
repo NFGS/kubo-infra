@@ -906,10 +906,15 @@ PROVEEDOR_ID=$(echo "${PROVEEDOR}" | jq -r '.data.id // empty')
 check "proveedor creado" "true" "$([[ -n "${PROVEEDOR_ID}" ]] && echo true || echo false)"
 
 COMPRA=$(curl -sS -X POST "${BASE}/purchases" "${AUTH[@]}" \
-  -d "{\"supplier_id\":\"${PROVEEDOR_ID}\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":5,\"unit_cost\":5000}]}")
+  -d "{\"supplier_id\":\"${PROVEEDOR_ID}\",\"warehouse_id\":\"${BODEGA_ID}\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":5,\"unit_cost\":5000}]}")
 COMPRA_ID=$(echo "${COMPRA}" | jq -r '.data.id // empty')
 check "compra registrada por 25000.00" "25000.00" "$(echo "${COMPRA}" | jq -r '.data.total // empty')"
 check "el IVA de la compra se desagrega" "3991.60" "$(echo "${COMPRA}" | jq -r '.data.tax // empty')"
+check "la compra entra a la bodega elegida" "${BODEGA_ID}" \
+  "$(echo "${COMPRA}" | jq -r '.data.warehouse_id // empty')"
+check "una bodega inexistente rechaza la compra" "404" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/purchases" "${AUTH[@]}" \
+     -d "{\"supplier_id\":\"${PROVEEDOR_ID}\",\"warehouse_id\":\"00000000-0000-0000-0000-000000000000\",\"items\":[{\"product_id\":\"${PRODUCTO_ID}\",\"quantity\":1,\"unit_cost\":1000}]}")"
 
 # Soportes de compra (P-25): el archivo queda ligado a la compra que lo origina.
 printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%%%EOF\n' > /tmp/opencode/soporte.pdf
@@ -938,6 +943,9 @@ check "la compra queda anulada" "VOIDED" \
   "$(curl -sS -X POST "${BASE}/purchases/${COMPRA_ID}/void" "${AUTH[@]}" | jq -r '.data.status')"
 check "el inventario vuelve a 10 unidades" "10" \
   "$(curl -sS "${BASE}/products/${PRODUCTO_ID}" "${AUTH[@]}" | jq -r '.data.stock')"
+check "la anulacion revierte en la bodega elegida" "${BODEGA_ID}" \
+  "$(curl -sS "${BASE}/stock/movements?product_id=${PRODUCTO_ID}" "${AUTH[@]}" \
+     | jq -r '[.data[] | select(.reference_type == "PURCHASE_VOID")][0].warehouse_id // empty')"
 
 check "RLS en compras: sin contexto de negocio no hay filas" "0" \
   "$(docker exec kubo-postgres psql -U kubo_erp -d kubo_erp -tAc "select count(*) from purchases" 2>/dev/null | tr -d '[:space:]')"
