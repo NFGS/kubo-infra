@@ -209,6 +209,10 @@ services:
       # Conexiones a Postgres del ERP: 50 cajas concurrentes compiten por el
       # pool, y el cuello de la caja se mide con el (P-10).
       POOL_SIZE: ${KUBO_ERP_POOL_SIZE:-10}
+      # Facturacion electronica (DIAN): adaptador del puerto y ambiente
+      # (1 produccion, 2 habilitacion).
+      KUBO_BILLING_ADAPTER: ${KUBO_BILLING_ADAPTER:-KuboErp.Billing.Sandbox}
+      KUBO_BILLING_ENVIRONMENT: ${KUBO_BILLING_ENVIRONMENT:-2}
       DATABASE_URL: ecto://kubo_erp:${KUBO_ERP_DB_PASSWORD:-kubo_erp_dev}@postgres:5432/kubo_erp
       AMQP_URL: amqp://${KUBO_RABBITMQ_USER:-kubo}:${KUBO_RABBITMQ_PASSWORD:-kubo_rabbit_dev}@rabbitmq:5672
       SECRET_KEY_BASE: ${KUBO_ERP_SECRET_KEY_BASE:?KUBO_ERP_SECRET_KEY_BASE es obligatoria (ver .env.example)}

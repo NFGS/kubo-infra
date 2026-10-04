@@ -607,13 +607,35 @@ check_positivo "el filtro de fechas usa la zona del negocio" \
 check "una fecha invalida responde 400" "400" \
   "$(curl -sS -o /dev/null -w '%{http_code}' "${BASE}/reports/sales.csv?from=no-es-fecha" "${AUTH[@]}")"
 
+# Datos fiscales del emisor (DIAN): el negocio los registra una vez; viajan en
+# el token y el adaptador los usa sin consultar a IAM. El DV del NIT lo calcula
+# el servidor.
+FISCAL=$(curl -sS -X PATCH "${BASE}/tenants/me" "${AUTH[@]}" \
+  -d '{"tax_id":"900123456","fiscal_address":"Calle 1 # 2-3","tax_regime":"RESPONSABLE_IVA","invoice_resolution":"Resolucion 18764","invoice_prefix":"FE"}')
+check "el negocio registra sus datos fiscales con el DV calculado" "8" \
+  "$(echo "${FISCAL}" | jq -r '.data.taxIdDv // empty')"
+
+check "el adaptador de facturacion configurado es el sandbox" "sandbox" \
+  "$(curl -sS "${CURL_TLS[@]}" https://localhost:9083/api/v1/health 2>/dev/null | jq -r '.billing.adapter // empty')"
+
+# El token nuevo lleva los datos fiscales; el gateway los propaga al ERP.
+TOKEN_FISCAL=$(curl -sS -X POST "${BASE}/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}" | jq -r '.accessToken // empty')
+AUTH_FISCAL=(-H "Authorization: Bearer ${TOKEN_FISCAL}" -H 'Content-Type: application/json')
+
 # Factura electronica (P-18): puerto de facturacion con adaptador sandbox. Se
 # emite una sola vez (el CUFE es inmutable) y el XML sigue UBL 2.1.
-FACTURA=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH[@]}")
+FACTURA=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH_FISCAL[@]}")
 CUFE=$(echo "${FACTURA}" | jq -r '.data.cufe // empty')
 check "la venta se factura con CUFE valido" "true" \
   "$([[ "${CUFE}" =~ ^[0-9a-f]{96}$ ]] && echo true || echo false)"
-FACTURA2=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH[@]}")
+check "la factura trae el NIT del negocio con su DV" "true" \
+  "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *'schemeID="8">900123456'* ]] && echo true || echo false)"
+check "la factura usa el prefijo del negocio" "true" \
+  "$([[ "$(echo "${FACTURA}" | jq -r '.data.xml')" == *"<cbc:ID>FE-"* ]] && echo true || echo false)"
+check "la factura reporta su estado del proveedor" "ISSUED" \
+  "$(echo "${FACTURA}" | jq -r '.data.status // empty')"
+FACTURA2=$(curl -sS -X POST "${BASE}/sales/${VENTA_ID}/invoice" "${AUTH_FISCAL[@]}")
 check "facturar dos veces devuelve la misma factura" "true" \
   "$([[ "${CUFE}" == "$(echo "${FACTURA2}" | jq -r '.data.cufe')" ]] && echo true || echo false)"
 check "la factura es un documento UBL 2.1" "true" \
