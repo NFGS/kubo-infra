@@ -204,7 +204,7 @@ IDX="/tmp/opencode/notion-adr-index.md"
 {
   echo "# Índice de ADRs"
   echo
-  echo "Decisiones de arquitectura en formato MADR (26), con opciones, trade-offs y consecuencias."
+  echo "Decisiones de arquitectura en formato MADR ($(ls "$WS"/kubo-docs/adr/ADR-*.md | wc -l)), con opciones, trade-offs y consecuencias."
   echo
   for f in "$WS"/kubo-docs/adr/ADR-*.md; do echo "- $(title_of "$f")"; done
 } > "$IDX"
