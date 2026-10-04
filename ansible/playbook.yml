@@ -17,7 +17,7 @@
 
   vars:
     kubo_dir: /opt/kubo
-    kubo_repo: "{{ lookup('env', 'KUBO_REPO') | default('https://gitlab.com/kubo/kubo.git', true) }}"
+    kubo_repo: "{{ lookup('env', 'KUBO_REPO') | default('https://github.com/NFGS/kubo-workspace.git', true) }}"
     kubo_version: "{{ lookup('env', 'KUBO_VERSION') | default('main', true) }}"
     # Puertos publicos: SOLO el borde TLS de Caddy (3080 redirige a 3443). La
     # PWA se sirve a traves de el, de modo que todo el trafico del negocio va

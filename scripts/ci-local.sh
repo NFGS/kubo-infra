@@ -1,7 +1,7 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Gate local de calidad (P-06): las mismas verificaciones que bloquean el merge
-# en GitLab, ejecutables en la maquina del desarrollador.
+# Gate local de calidad (P-06): las verificaciones que bloquean el merge,
+# ejecutables en la maquina del desarrollador.
 #
 #   1. Escaneo de secretos.
 #   2. Suites unitarias e integracion de los cinco servicios + web.
