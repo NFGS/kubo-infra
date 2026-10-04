@@ -21,6 +21,8 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | `scripts/tenant-admin.sh` | Superficie del operador: listar, suspender, reactivar, renovar y uso |
 | `scripts/gen-internal-certs.sh` | CA interna y certificados de la malla mTLS (P-28) |
 | `scripts/obsidian-sync.sh` | Espeja la documentación en el vault de Obsidian (4.º entorno) |
+| `scripts/notion-sync.sh` | Espeja la documentación en Notion preservando callouts y diagramas |
+| `scripts/kubo-sync.sh` | Orquestador de los 4 entornos: `status`, `run` y `watch` |
 | `backup/` | Operador de respaldos: respaldo → retención → verificación → manifiesto (ADR-0022) |
 | `load/pos.js` · `load/catalog.js` | Carga k6: 50 cajas en el POS y catálogo de 50.000 productos |
 | `load/seed-big-catalog.sh` | Siembra/limpia el catálogo voluminoso de la demo (`make load-big`) |
@@ -75,6 +77,16 @@ Espejo de conocimiento (opcional):
 
 ```bash
 ./kubo-infra/scripts/obsidian-sync.sh   # documentacion -> vault de Obsidian
+```
+
+Sincronización de los 4 entornos (directorio del proyecto, GitHub, Notion y
+Obsidian): cada espejo guarda la huella de las fuentes canónicas y `run`
+propaga solo lo desviado (PDF → Notion → Obsidian → push).
+
+```bash
+make sync-status   # estado y desvíos (no cambia nada)
+make sync          # propaga los cambios y empuja commits pendientes
+./kubo-infra/scripts/kubo-sync.sh watch   # vigila y propaga al detectar cambios
 ```
 
 ## Observabilidad (Fase 2)

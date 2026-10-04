@@ -18,16 +18,17 @@ set -euo pipefail
 
 WS="$(cd "$(dirname "$0")/../.." && pwd)"
 VAULT="${1:-${KUBO_VAULT:-$HOME/Documents/Obsidian Vaults/Ningendo Bee}}"
+FP="${KUBO_SYNC_FINGERPRINT:-desconocida}"
 
 if [ ! -d "$VAULT" ]; then
   echo "ERROR: no existe el vault: $VAULT" >&2
   exit 1
 fi
 
-python3 - "$WS" "$VAULT" <<'PY'
+python3 - "$WS" "$VAULT" "$FP" <<'PY'
 import datetime, os, re, shutil, sys
 
-ws, vault = sys.argv[1], sys.argv[2]
+ws, vault, huella = sys.argv[1], sys.argv[2], sys.argv[3]
 kubo = os.path.join(vault, "Kubo")
 docs_dir = os.path.join(kubo, "Documentación")
 adr_dir = os.path.join(kubo, "Decisiones Técnicas")
@@ -138,6 +139,7 @@ hub = f"""---
 proyecto: Kubo
 tipo: índice
 actualizado: {fecha}
+huella: {huella}
 fuente: repositorio kubo-workspace (+ 8 hijos)
 tags:
   - kubo
