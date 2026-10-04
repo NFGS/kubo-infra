@@ -9,7 +9,7 @@
 #   4. Contratos del consumidor (Pact).
 #   5. Prueba de humo end-to-end.
 #   6. E2E de navegador con auditoria de accesibilidad (Playwright + axe).
-#   7. PDF consolidado al dia respecto a las fuentes de kubo-docs.
+#   7. Documentacion: enlaces relativos resueltos y PDF consolidado al dia.
 #
 # Uso:  make ci
 # ---------------------------------------------------------------------------
@@ -73,7 +73,8 @@ sleep 5
 paso "kubo-web (Playwright + axe)" bash -c "cd '${ROOT}/kubo-web' && npx playwright test"
 KUBO_AUTH_RATE_LIMIT_PER_MINUTE=40 docker compose -f "${COMPOSE_FILE}" up -d kubo-gateway >/dev/null 2>&1
 
-echo "[7/7] documentacion consolidada"
+echo "[7/7] documentacion"
+paso "enlaces relativos de la documentacion" "${ROOT}/kubo-docs/scripts/check-links.sh"
 paso "pdf consolidado al dia" "${ROOT}/kubo-docs/scripts/check-pdf.sh"
 
 echo "================================================================"
