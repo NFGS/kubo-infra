@@ -102,10 +102,12 @@ do_run() {
   nf=$(notion_fp)
   of=$(obsidian_fp)
 
-  if [ "$force" = "1" ] || [ "$fp" != "$(state_fp)" ]; then
+  if [ "$force" = "1" ] || ! "$WS/kubo-docs/scripts/check-pdf.sh" >/dev/null 2>&1; then
     echo "[1/4] PDF consolidado"
     (cd "$WS" && make pdf) | tail -2
     cambio=1
+  else
+    echo "[1/4] PDF consolidado: al día"
   fi
 
   if [ "$force" = "1" ] || [ "$fp" != "$(state_fp)" ] || [ "$nf" != "$fp" ]; then
