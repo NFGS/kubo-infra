@@ -12,6 +12,9 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+# El directorio de trabajo temporal debe existir tambien tras un reinicio.
+mkdir -p /tmp/opencode
+
 BASE="${KUBO_API:-http://localhost:9080/api/v1}"
 EMAIL="${KUBO_ADMIN_EMAIL:-admin@kubo.local}"
 PASSWORD="${KUBO_ADMIN_PASSWORD:-Admin123!}"

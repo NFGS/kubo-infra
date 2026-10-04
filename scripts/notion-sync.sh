@@ -12,6 +12,9 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+# El directorio de trabajo temporal debe existir tambien tras un reinicio.
+mkdir -p /tmp/opencode
+
 API="https://api.notion.com/v1"
 TOKEN="${NOTION_KUBO_TOKEN:?falta NOTION_KUBO_TOKEN en el entorno}"
 WS="$(cd "$(dirname "$0")/../.." && pwd)"
