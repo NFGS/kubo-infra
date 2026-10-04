@@ -349,6 +349,9 @@ services:
       KUBO_USER_RATE_LIMIT_PER_MINUTE: ${KUBO_USER_RATE_LIMIT_PER_MINUTE:-300}
       # Dias de vigencia de la cookie httpOnly del refresh token (P-03).
       KUBO_REFRESH_COOKIE_DAYS: "7"
+      # Cookie Secure forzada (demo publico por HTTPS, ADR-0028); por defecto se
+      # resuelve con X-Forwarded-Proto (el borde TLS la marca).
+      KUBO_COOKIE_SECURE: ${KUBO_COOKIE_SECURE:-false}
       # Trazas OTLP hacia el collector (P-07).
       OTEL_EXPORTER_OTLP_ENDPOINT: http://kubo-otel:4318
     ports:
