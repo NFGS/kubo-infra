@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------------
+# Kubo — terminacion TLS publica para el demo 100% OSS (ADR-0028).
+#
+# kubo.dedyn.io con Let's Encrypt (HTTP-01, imagen oficial de Caddy): requiere
+# los puertos 80 y 443 publicados y reenviados en el router, y el DNS en deSEC
+# con el registro A apuntando a la IP publica (ver ddns-dedyn.sh).
+#
+# El bloque `localhost` existe para la sonda de salud del contenedor y para el
+# acceso local por HTTPS con la CA interna.
+#
+# Uso: KUBO_CADDYFILE=Caddyfile.public y KUBO_TLS_DOMAIN=kubo.dedyn.io en .env.
+# ---------------------------------------------------------------------------
+
+{$KUBO_TLS_DOMAIN:kubo.dedyn.io} {
+	reverse_proxy kubo-web:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+localhost {
+	tls internal
+	respond "Kubo OK" 200
+}

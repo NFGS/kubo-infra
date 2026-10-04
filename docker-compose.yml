@@ -412,7 +412,7 @@ services:
       - "${KUBO_TLS_HTTP_PORT:-3080}:80"
       - "${KUBO_TLS_HTTPS_PORT:-3443}:443"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/${KUBO_CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddydata:/data
       - caddyconfig:/config
     depends_on:
