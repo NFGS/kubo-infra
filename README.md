@@ -20,6 +20,7 @@ semilla de datos, pruebas de humo y utilidades de operacion.
 | `scripts/operacion-check.sh` | Chequeo diario de operación (salud, respaldo verificado, disco, certificados) |
 | `scripts/tenant-admin.sh` | Superficie del operador: listar, suspender, reactivar, renovar y uso |
 | `scripts/gen-internal-certs.sh` | CA interna y certificados de la malla mTLS (P-28) |
+| `scripts/obsidian-sync.sh` | Espeja la documentación en el vault de Obsidian (4.º entorno) |
 | `backup/` | Operador de respaldos: respaldo → retención → verificación → manifiesto (ADR-0022) |
 | `load/pos.js` · `load/catalog.js` | Carga k6: 50 cajas en el POS y catálogo de 50.000 productos |
 | `load/seed-big-catalog.sh` | Siembra/limpia el catálogo voluminoso de la demo (`make load-big`) |
@@ -68,6 +69,12 @@ make bus-drill      # caida del bus sin perdida de eventos
 make backup         # respaldo de bases y configuracion
 make restore-drill  # simulacro de restauracion cronometrado
 make down
+```
+
+Espejo de conocimiento (opcional):
+
+```bash
+./kubo-infra/scripts/obsidian-sync.sh   # documentacion -> vault de Obsidian
 ```
 
 ## Observabilidad (Fase 2)
