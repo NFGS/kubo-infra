@@ -231,6 +231,7 @@ _Borde único, malla mTLS, RLS por negocio y cifrado de campos con índice ciego
 - **Evidencias**: `Kubo/Recursos/evidencias/` (capturas, demo y comprobaciones).
 - **PDF consolidado**: `Kubo/Recursos/Kubo-Documentacion.pdf` (142 páginas).
 - **Código fuente**: <https://github.com/NFGS/kubo-workspace>.
+- **Auditoría del ecosistema**: [[Auditorías/2026-10-04-auditoria-ecosistema-opencode|Auditoría OpenCode + Kubo — 2026-10-04]].
 
 ## Tags
 
