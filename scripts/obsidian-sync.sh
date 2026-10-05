@@ -181,6 +181,7 @@ tags:
 | Recurso | Enlace |
 |---|---|
 {enlaces}
+| 🌐 **Demo pública** | <https://kubo.shares.zrok.io> — túnel zrok (ADR-0028) |
 | 📓 **Documentación en Notion** | [Kubo — Documentación](https://app.notion.com/p/Kubo-3ef7d55fd95e8040b09ed5fb5e2dbdb1) |
 | 💻 **Ruta local** | `~/Documents/Proyectos de Programación/Kubo` |
 

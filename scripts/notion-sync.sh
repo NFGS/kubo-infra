@@ -252,6 +252,7 @@ INTRO="/tmp/opencode/notion-kubo-intro.md"
   echo "ERP + CRM autoalojable para PYMES. Documentación espejo del repositorio, sincronizada el $(date +%F)."
   echo
   echo "- **Verificación vigente**: \`make smoke\` 192/192 · \`make ci\` 13/13 · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 %."
+  echo "- **Demo pública**: [https://kubo.shares.zrok.io](https://kubo.shares.zrok.io) — túnel zrok (despliegue en ADR-0028 y guía 05 §9)."
   echo "- **Contenido**: Estado del proyecto, Documentación (01–13), ADRs, Evidencia y Repositorios."
   echo "- **Fuente de verdad**: los repositorios en GitHub (cuenta NFGS); este espacio es un espejo de consulta."
   echo "- **Huella de sincronización**: \`${FP}\` (kubo-sync)."
