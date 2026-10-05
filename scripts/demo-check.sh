@@ -12,7 +12,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENV_FILE="${ROOT}/kubo-infra/.env"
 leer() { grep -E "^$1=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2-; }
-DOMINIO="$(leer KUBO_TLS_DOMAIN)"; DOMINIO="${DOMINIO:-kubo.dedyn.io}"
+DOMINIO="$(leer KUBO_TLS_DOMAIN)"; DOMINIO="${DOMINIO:-kubo-app.duckdns.org}"
 OK=0
 FALLA=0
 

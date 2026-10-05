@@ -3,7 +3,7 @@
 # DDNS para el demo publico (ADR-0028) con DuckDNS.
 # Actualiza el registro A del subdominio con la IP publica actual.
 #
-# Requiere en kubo-infra/.env: KUBO_TLS_DOMAIN (kubo.duckdns.org) y KUBO_DUCK_TOKEN
+# Requiere en kubo-infra/.env: KUBO_TLS_DOMAIN (kubo-app.duckdns.org) y KUBO_DUCK_TOKEN
 # (token de la cuenta DuckDNS, en https://www.duckdns.org).
 #
 # Uso:  ./kubo-infra/scripts/ddns-duckdns.sh
