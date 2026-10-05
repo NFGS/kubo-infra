@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sintaxis de los scripts
+        run: |
+          for f in scripts/*.sh; do
+            bash -n "$f"
+          done
+          echo "scripts OK"
+      - name: Compose valido con .env.example
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          echo "compose OK"
