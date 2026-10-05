@@ -1,5 +1,7 @@
 # kubo-infra
 
+> Parte del proyecto **Kubo** — [kubo-workspace](https://github.com/NFGS/kubo-workspace) (ERP + CRM autoalojable para PYMES).
+
 Infraestructura como codigo del sistema Kubo: orquestacion de contenedores,
 semilla de datos, pruebas de humo y utilidades de operacion.
 

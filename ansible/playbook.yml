@@ -42,6 +42,7 @@
           - ca-certificates
           - curl
           - git
+          - make
           - openssl
           - ufw
         state: present
@@ -67,6 +68,12 @@
         dest: "{{ kubo_dir }}"
         version: "{{ kubo_version }}"
         depth: 1
+
+    - name: Repos hijos del polyrepo (el workspace solo trae Makefile y documentacion)
+      ansible.builtin.command:
+        cmd: make clone
+        chdir: "{{ kubo_dir }}"
+        creates: "{{ kubo_dir }}/kubo-erp/.git"
 
     - name: Secretos del despliegue (se generan una sola vez, en el host)
       ansible.builtin.shell:
