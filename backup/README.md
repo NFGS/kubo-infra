@@ -27,7 +27,9 @@ make backup-operator-loop   # deja el operador corriendo (ciclo diario)
 | `KUBO_BACKUP_KEEP_MIN` | `3` | Respaldos que se conservan aunque la antigüedad los alcance |
 | `KUBO_BACKUP_VERIFY` | `true` | Restaurar en bases de usar y tirar y comparar conteos |
 | `KUBO_BACKUP_INTERVAL_HOURS` | `24` | Frecuencia del modo bucle |
-| `KUBO_BACKUP_OFFSITE_DIR` | `./backups-offsite` | Copia fuera del sitio con `rclone`: una ruta montada (otro disco, NFS) **o un remoto configurado** (`s3:bucket/kubo`, `b2:...`, `drive:...`). La copia se verifica con `rclone check` |
+| `KUBO_BACKUP_OFFSITE_DIR` | `/offsite` | Destino de la copia fuera del sitio con `rclone`: `/offsite` (ruta montada: otro disco, NFS) **o un remoto** (`storj:kubo-backups`, `b2:...`, `drive:...`). La copia se verifica con `rclone check` |
+| `KUBO_BACKUP_LOCAL_DIR` | `./backups-offsite` | Carpeta del host montada en `/offsite` |
+| `KUBO_STORJ_ACCESS_KEY` / `KUBO_STORJ_SECRET_KEY` | — | Credenciales S3 de Storj: definen el remoto `storj:` por variables de entorno (`RCLONE_CONFIG_STORJ_*`), sin archivo de configuración |
 | `KUBO_BACKUP_UID` / `KUBO_BACKUP_GID` | `1000` / `1000` | Usuario con el que corre el operador: los respaldos quedan en el volumen del dueño, **no de root** |
 
 ## Operación
@@ -41,7 +43,8 @@ make backup-operator-loop   # deja el operador corriendo (ciclo diario)
   `verificacion=fallida` en el manifiesto: no debe pasar por bueno.
 - **Restaurar a mano**: `pg_restore -d kubo_erp kubo_erp.dump` y
   `tar -xzf documents.tar.gz -C /data/documents`.
-- **Remoto de objeto**: para S3/B2/Drive, configurar el remoto de rclone en el
-  contenedor (`rclone config` sobre un archivo montado en `/root/.config/rclone`)
-  y apuntar `KUBO_BACKUP_OFFSITE_DIR` a ese remoto; la verificación y el
-  manifiesto funcionan igual.
+- **Remoto de objeto**: para S3/B2/Drive, apuntar `KUBO_BACKUP_OFFSITE_DIR` a
+  ese remoto. El de Storj se define por variables de entorno
+  (`KUBO_STORJ_ACCESS_KEY`/`KUBO_STORJ_SECRET_KEY`, sin archivo de
+  configuración); cualquier otro remoto se configura con `rclone config` sobre
+  un archivo montado. La verificación y el manifiesto funcionan igual.

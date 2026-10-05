@@ -266,13 +266,21 @@ services:
       KUBO_POSTGRES_ROOT_PASSWORD: ${KUBO_POSTGRES_ROOT_PASSWORD:-kubo_root_dev}
       KUBO_BACKUP_RETENTION_DAYS: ${KUBO_BACKUP_RETENTION_DAYS:-14}
       KUBO_BACKUP_INTERVAL_HOURS: ${KUBO_BACKUP_INTERVAL_HOURS:-24}
-      KUBO_BACKUP_OFFSITE_DIR: /offsite
+      KUBO_BACKUP_OFFSITE_DIR: ${KUBO_BACKUP_OFFSITE_DIR:-/offsite}
       KUBO_ENV_FILE: /config/.env
+      # Remoto rclone por variables de entorno (Storj S3, ADR-0028): no hace
+      # falta archivo de configuracion dentro del contenedor. Solo se usa si
+      # KUBO_BACKUP_OFFSITE_DIR apunta a `storj:...`.
+      RCLONE_CONFIG_STORJ_TYPE: s3
+      RCLONE_CONFIG_STORJ_PROVIDER: Storj
+      RCLONE_CONFIG_STORJ_ENDPOINT: ${KUBO_STORJ_ENDPOINT:-https://gateway.storjshare.io}
+      RCLONE_CONFIG_STORJ_ACCESS_KEY_ID: ${KUBO_STORJ_ACCESS_KEY:-}
+      RCLONE_CONFIG_STORJ_SECRET_ACCESS_KEY: ${KUBO_STORJ_SECRET_KEY:-}
     volumes:
       - ./backups:/backups
       - ./.env:/config/.env:ro
       - documents:/documents:ro
-      - ${KUBO_BACKUP_OFFSITE_DIR:-./backups-offsite}:/offsite
+      - ${KUBO_BACKUP_LOCAL_DIR:-./backups-offsite}:/offsite
     depends_on:
       postgres:
         condition: service_healthy
