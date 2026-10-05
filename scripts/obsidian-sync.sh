@@ -90,16 +90,24 @@ TAGS = {
     "adr": ["kubo", "adr", "arquitectura"],
     "evidencia": ["kubo", "evidencia"],
 }
+
+def adr_estado(texto):
+    # Los ADR declaran el estado en una tabla MADR: "| Estado | Aceptada |".
+    m = re.search(r"^\|\s*Estado\s*\|\s*([^|]+?)\s*\|", texto, re.M)
+    return m.group(1).strip() if m else None
+
 for src, (nota, t, tipo) in sorted(mapa.items()):
     texto = open(src, encoding="utf-8").read()
     texto = rewrite(texto, src)
+    estado = adr_estado(texto) if tipo == "adr" else None
     fm = (
         "---\n"
         "proyecto: Kubo\n"
         f"tipo: {tipo}\n"
         f"actualizado: {fecha}\n"
         f"fuente: {os.path.relpath(src, ws)}\n"
-        "tags:\n" + "".join(f"  - {x}\n" for x in TAGS[tipo]) + "---\n\n"
+        + (f"estado: {estado}\n" if estado else "")
+        + "tags:\n" + "".join(f"  - {x}\n" for x in TAGS[tipo]) + "---\n\n"
     )
     with open(os.path.join(vault, nota + ".md"), "w", encoding="utf-8") as fh:
         fh.write(fm + texto)
@@ -202,11 +210,59 @@ _Borde único, malla mTLS, RLS por negocio y cifrado de campos con índice ciego
 
 ## Documentación ({len(docs_notas)} notas)
 
+> [!tip] Panel dinámico
+> Requiere el plugin **Dataview** habilitado. Si ves bloques de código sin
+> renderizar: Ajustes → Plugins de la comunidad → activa **Dataview**.
+
+```dataview
+TABLE file.folder AS "Carpeta", file.mtime AS "Actualizado"
+FROM #kubo AND #documentación
+SORT file.name ASC
+```
+
+### Índice curado
+
 {lista_docs}
 
 ## Decisiones técnicas ({len(adr_notas)} ADRs)
 
+> [!tip] Panel dinámico — ADRs por estado
+> Se alimenta del campo `estado` que el sync extrae de la tabla MADR de cada ADR.
+
+```dataview
+TABLE estado AS "Estado", file.mtime AS "Modificado"
+FROM #kubo AND #adr
+WHERE estado AND tipo != "plantilla"
+SORT file.name ASC
+```
+
+### Índice curado
+
 {lista_adrs}
+
+## Panorama dinámico
+
+> [!tip] Notas por tag
+> Distribución del conocimiento por tema (excluye el tag de proyecto).
+
+```dataview
+TABLE length(rows) AS "Notas"
+FROM #kubo
+FLATTEN file.etags AS tag
+WHERE tag != "#kubo"
+GROUP BY tag
+SORT length(rows) DESC
+```
+
+> [!tip] Actualizadas recientemente
+> Las últimas notas tocadas por el sync, útil para ver qué cambió.
+
+```dataview
+TABLE file.folder AS "Carpeta", file.mtime AS "Actualizado"
+FROM #kubo
+SORT file.mtime DESC
+LIMIT 10
+```
 
 ## Stack
 
