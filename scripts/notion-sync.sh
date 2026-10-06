@@ -21,6 +21,10 @@ WS="$(cd "$(dirname "$0")/../.." && pwd)"
 ROOT="${KUBO_NOTION_PAGE:-3ef7d55f-d95e-8040-b09e-d5fb5e2dbdb1}"
 FILE_IDS="${KUBO_NOTION_FILE_IDS:-$HOME/.config/opencode/scripts/notion-design/file-ids.json}"
 FP="${KUBO_SYNC_FINGERPRINT:-desconocida}"
+STATE_DIR="${KUBO_SYNC_STATE:-$HOME/.config/opencode/kubo-sync}"
+mkdir -p "$STATE_DIR"
+MANIFEST_JSONL="$STATE_DIR/notion-manifest.jsonl"
+: > "$MANIFEST_JSONL"
 LOG="/tmp/opencode/notion-sync.log"
 V="2025-09-03"
 VMD="2026-03-11"
@@ -159,12 +163,18 @@ set_markdown() { # pagina archivo titulo
   sleep 0.35
 }
 
-ensure_page() { # padre titulo archivo -> id
-  local parent="$1" title="$2" file="$3" id
+ensure_page() { # padre titulo archivo [importable|generado] -> id
+  local parent="$1" title="$2" file="$3" kind="${4:-importable}" id rel
   id=$(child_id "$parent" "$title")
   if [ -z "$id" ]; then id=$(create_page "$parent" "$title"); fi
   if [ -z "$id" ]; then return 1; fi
   set_markdown "$id" "$file" "$title"
+  case "$file" in
+    "$WS"/*) rel="${file#"$WS"/}" ;;
+    *) rel="" ;;
+  esac
+  jq -nc --arg id "$id" --arg t "$title" --arg f "$rel" --arg k "$kind" \
+    '{page_id:$id,title:$t,file:$f,kind:$k}' >> "$MANIFEST_JSONL"
   echo "$id"
 }
 
@@ -211,7 +221,7 @@ IDX="/tmp/opencode/notion-adr-index.md"
   echo
   for f in "$WS"/kubo-docs/adr/ADR-*.md; do echo "- $(title_of "$f")"; done
 } > "$IDX"
-ensure_page "$ADR" "Índice de ADRs" "$IDX" >/dev/null
+ensure_page "$ADR" "Índice de ADRs" "$IDX" generado >/dev/null
 for f in "$WS"/kubo-docs/adr/ADR-*.md; do
   ensure_page "$ADR" "$(title_of "$f")" "$f" >/dev/null
 done
@@ -235,13 +245,13 @@ IDXR="/tmp/opencode/notion-repos-index.md"
 {
   echo "# Repositorios"
   echo
-  echo "Los 9 repositorios del workspace, publicados en GitHub (privados, cuenta NFGS):"
+  echo "Los 9 repositorios del workspace, publicados en GitHub (públicos, cuenta NFGS):"
   echo
   for r in "${REPOS_ORDEN[@]}"; do
     echo "- [${r}](https://github.com/NFGS/${r}) — ${REPOS_DESC[$r]}"
   done
 } > "$IDXR"
-ensure_page "$REP" "Índice de repositorios" "$IDXR" >/dev/null
+ensure_page "$REP" "Índice de repositorios" "$IDXR" generado >/dev/null
 for r in kubo-gateway kubo-iam kubo-crm kubo-erp kubo-analytics kubo-web kubo-infra kubo-docs; do
   f="$WS/$r/README.md"
   if [ -f "$f" ]; then ensure_page "$REP" "$(title_of "$f")" "$f" >/dev/null; fi
@@ -272,6 +282,22 @@ INTRO="/tmp/opencode/notion-kubo-intro.md"
   done
 } > "$INTRO"
 set_markdown "$ROOT" "$INTRO" "Kubo"
+jq -nc --arg id "$ROOT" --arg t "Kubo (intro)" --arg f "" --arg k "generado" \
+  '{page_id:$id,title:$t,file:$f,kind:$k}' >> "$MANIFEST_JSONL"
+
+# Manifiesto y linea base para la reconciliacion bidireccional (ADR-0030).
+jq -s 'map({(.page_id): {title:.title, file:(if .file=="" then null else .file end), kind:.kind}}) | add // {}' \
+  "$MANIFEST_JSONL" > "$STATE_DIR/notion-manifest.json"
+BASELINE_JSONL="$STATE_DIR/notion-baseline.jsonl"
+: > "$BASELINE_JSONL"
+while IFS= read -r page_id; do
+  ts=$(req GET "/pages/${page_id}" "$V" | jq -r '.last_edited_time // empty' 2>/dev/null)
+  if [ -n "$ts" ]; then
+    jq -nc --arg id "$page_id" --arg ts "$ts" '{page_id:$id,last_edited_time:$ts}' >> "$BASELINE_JSONL"
+  fi
+  sleep 0.35
+done < <(jq -r '.page_id' "$MANIFEST_JSONL" | sort -u)
+jq -s 'map({(.page_id): .last_edited_time}) | add // {}' "$BASELINE_JSONL" > "$STATE_DIR/notion-baseline.json"
 
 echo "== Resultado: $OK OK, $ERR errores =="
 if [ "$ERR" -gt 0 ]; then

@@ -1,0 +1,11 @@
+[Unit]
+Description=Kubo - sincronizacion automatica de los 4 entornos
+Documentation=https://github.com/NFGS/kubo-workspace
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart="%h/Documents/Proyectos de Programación/Kubo/kubo-infra/scripts/kubo-sync-auto.sh"
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,14 @@
+[Unit]
+Description=Kubo - tunel publico de demostracion (zrok)
+Documentation=https://github.com/NFGS/kubo-workspace
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/zrok2 share public --headless -n public:kubo http://localhost:3000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Kubo - actualiza la IP publica en DuckDNS (DDNS)
+Documentation=https://github.com/NFGS/kubo-workspace
+
+[Service]
+Type=oneshot
+ExecStart="%h/Documents/Proyectos de Programación/Kubo/kubo-infra/scripts/ddns-duckdns.sh"
