@@ -68,5 +68,3 @@ fi
 echo "================================================================"
 echo "Resultado: ${OK} PASA, ${FALLA} FALLA"
 [ "${FALLA}" -eq 0 ]
-
-# marcador-github-ff-1791290045
