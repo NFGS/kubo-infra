@@ -83,6 +83,12 @@ obsidian_fp() {
   [ -f "$hub" ] && grep -m1 '^huella:' "$hub" | awk '{print $2}' || true
 }
 
+indent() { # sangra la entrada estandar sin subprocesos: journald atribuye mal
+           # las lineas de procesos muy cortos (p. ej. sed) en las unidades
+  local linea
+  while IFS= read -r linea; do echo "  $linea"; done
+}
+
 write_files_baseline() { # sha256 por archivo canonico (para detectar conflictos)
   mkdir -p "$STATE_DIR"
   python3 - "$WS" "$FILES_BASE" <<'PY'
@@ -183,14 +189,20 @@ PY
   echo
   echo "Notion (deriva):"
   nout=$(KUBO_SYNC_STATE="$STATE_DIR" "$WS/kubo-infra/scripts/notion-pull.sh" check 2>&1)
-  echo "$nout" | sed 's/^/  /'
-  echo "$nout" | grep -q 'importables=0 regenerables=0' || veredicto="PENDIENTE"
+  indent <<< "$nout"
+  if echo "$nout" | grep -q 'importables=0 regenerables=0'; then :; else
+    veredicto="PENDIENTE"
+    echo "$nout" | grep -q 'NOTION:' || echo "  ERROR: el chequeo de Notion no produjo resultado (¿token?)"
+  fi
 
   echo
   echo "Obsidian (deriva):"
   oout=$(KUBO_SYNC_STATE="$STATE_DIR" KUBO_VAULT="$VAULT" "$WS/kubo-infra/scripts/obsidian-pull.sh" check 2>&1)
-  echo "$oout" | sed 's/^/  /'
-  echo "$oout" | grep -q 'editadas=0' || veredicto="PENDIENTE"
+  indent <<< "$oout"
+  if echo "$oout" | grep -q 'editadas=0'; then :; else
+    veredicto="PENDIENTE"
+    echo "$oout" | grep -q 'OBSIDIAN:' || echo "  ERROR: el chequeo de Obsidian no produjo resultado"
+  fi
 
   echo
   echo "Veredicto: $veredicto"
@@ -228,12 +240,12 @@ do_pull() {
 
   echo "[2/3] Notion"
   nout=$(KUBO_SYNC_STATE="$STATE_DIR" "$WS/kubo-infra/scripts/notion-pull.sh" pull 2>&1)
-  echo "$nout" | sed 's/^/  /'
+  indent <<< "$nout"
   echo "$nout" | grep -q 'conflictos=0' || conflictos=$((conflictos + 1))
 
   echo "[3/3] Obsidian"
   oout=$(KUBO_SYNC_STATE="$STATE_DIR" KUBO_VAULT="$VAULT" "$WS/kubo-infra/scripts/obsidian-pull.sh" pull 2>&1)
-  echo "$oout" | sed 's/^/  /'
+  indent <<< "$oout"
   echo "$oout" | grep -q 'conflictos=0' || conflictos=$((conflictos + 1))
 
   echo
@@ -350,14 +362,22 @@ do_auto() {
 
   echo "[2/3] Notion"
   nout=$(KUBO_SYNC_STATE="$STATE_DIR" "$WS/kubo-infra/scripts/notion-pull.sh" pull 2>&1)
-  echo "$nout" | sed 's/^/  /'
+  indent <<< "$nout"
+  if ! echo "$nout" | grep -q 'NOTION:'; then
+    echo "  ERROR: el chequeo de Notion no produjo resultado (¿token?)"
+    conflictos=$((conflictos + 1))
+  fi
   echo "$nout" | grep -Eq 'importadas=[1-9]' && local_cambio=1
   echo "$nout" | grep -Eq 'conflictos=[1-9]' && conflictos=$((conflictos + 1))
   echo "$nout" | grep -Eq 'importables=[1-9]|regenerables=[1-9]' && needs_run=1
 
   echo "[3/3] Obsidian"
   oout=$(KUBO_SYNC_STATE="$STATE_DIR" KUBO_VAULT="$VAULT" "$WS/kubo-infra/scripts/obsidian-pull.sh" pull 2>&1)
-  echo "$oout" | sed 's/^/  /'
+  indent <<< "$oout"
+  if ! echo "$oout" | grep -q 'OBSIDIAN:'; then
+    echo "  ERROR: el chequeo de Obsidian no produjo resultado"
+    conflictos=$((conflictos + 1))
+  fi
   echo "$oout" | grep -Eq 'importadas=[1-9]' && local_cambio=1
   echo "$oout" | grep -Eq 'conflictos=[1-9]' && conflictos=$((conflictos + 1))
   echo "$oout" | grep -Eq 'editadas=[1-9]' && needs_run=1
@@ -377,7 +397,11 @@ do_auto() {
     resultado="ALINEADO"
     echo "RESULTADO: ALINEADO"
   fi
-  echo "$(date -Is) $resultado" >> "$STATE_DIR/auto.log"
+  {
+    printf '%s %s\n' "$(date -Is)" "$resultado"
+    printf '  notion:   %s\n' "${nout//$'\n'/ | }"
+    printf '  obsidian: %s\n' "${oout//$'\n'/ | }"
+  } >> "$STATE_DIR/auto.log"
   [ "$conflictos" -eq 0 ]
 }
 
