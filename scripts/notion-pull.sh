@@ -30,6 +30,11 @@ V="2025-09-03"
 VMD="2026-03-11"
 MODE="${1:-check}"
 
+# El export markdown de Notion no es fiel: convierte tablas a HTML, escapa
+# enlaces dentro de formato y usa tabs (incidente 2026-10-07, ADR-0030).
+# Con estas marcas la pagina NO se importa: queda como conflicto a revisar.
+LOSSY_RE='<table|\\\[|\\!|'$'\t'
+
 if [ ! -f "$MANIFEST" ] || [ ! -f "$BASELINE" ]; then
   echo "NOTION: sin manifiesto ni linea base (ejecuta make sync una vez)"
   exit 0
@@ -92,16 +97,22 @@ while IFS= read -r page_id; do
     continue
   fi
 
-  # Importar: markdown de la pagina sin la linea del callout que agrega el sync.
+  # Importar solo si el redondeo de Notion es fiel; con perdida => conflicto,
+  # no se pisa el archivo canonico.
   tmp=$(mktemp)
   req GET "/pages/${page_id}/markdown" "$VMD" | jq -r '.markdown // ""' | grep -v '^<callout ' > "$tmp"
-  if [ -s "$tmp" ]; then
+  if [ ! -s "$tmp" ]; then
+    echo "  ERROR        $title (markdown vacio; no se toco $file)"
+    conflictos=$((conflictos + 1))
+  elif grep -qE "$LOSSY_RE" "$tmp"; then
+    mkdir -p "$CONF_DIR"; slug=$(echo "$file" | tr '/' '-')
+    cp "$tmp" "$CONF_DIR/notion--$slug"
+    echo "  CONFLICTO    $title (el redondeo de Notion no es fiel; revisar a mano) -> .sync/conflictos/notion--$slug"
+    conflictos=$((conflictos + 1))
+  else
     cp "$tmp" "$WS/$file"
     echo "  IMPORTADA    $title -> $file"
     importadas=$((importadas + 1))
-  else
-    echo "  ERROR        $title (markdown vacio; no se toco $file)"
-    conflictos=$((conflictos + 1))
   fi
   rm -f "$tmp"
 done < <(sort -u "$DERIVA")

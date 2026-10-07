@@ -36,6 +36,15 @@ VAULT="${KUBO_VAULT:-$HOME/Documents/Obsidian Vaults/Ningendo Bee}"
 REPOS=(. kubo-gateway kubo-iam kubo-crm kubo-erp kubo-analytics kubo-web kubo-infra kubo-docs)
 CONF_DIR="$WS/.sync/conflictos"
 
+# Candado: un solo ciclo a la vez. Evita la carrera timer <-> sync manual que
+# el 2026-10-07 importo paginas a medio escribir (ADR-0030, actualizacion).
+mkdir -p "$STATE_DIR"
+exec 9>"$STATE_DIR/lock"
+if ! flock -n 9; then
+  echo "Kubo sync: hay otro ciclo en curso; se omite esta ejecución."
+  exit 0
+fi
+
 fingerprint() { # huella de las fuentes canonicas (16 hex)
   {
     cat "$WS/README.md" 2>/dev/null
@@ -302,6 +311,8 @@ do_run() {
     if [ "$s" != "0" ] && [ "$commit" = "1" ]; then
       if [ "$d" = "." ]; then
         git -C "$WS/$d" add -- README.md kubo-docs Kubo-Documentacion.pdf Kubo-Documentacion.pdf.sha256 2>/dev/null
+      elif [ "$d" = "kubo-docs" ]; then
+        git -C "$WS/$d" add -- README.md '*.md' adr evidencia diagramas 2>/dev/null
       else
         git -C "$WS/$d" add -- README.md 2>/dev/null
       fi
