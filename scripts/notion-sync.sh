@@ -253,7 +253,9 @@ IDXR="/tmp/opencode/notion-repos-index.md"
   done
 } > "$IDXR"
 ensure_page "$REP" "Índice de repositorios" "$IDXR" generado >/dev/null
-for r in kubo-gateway kubo-iam kubo-crm kubo-erp kubo-analytics kubo-web kubo-infra kubo-docs; do
+# kubo-docs se excluye: su README es el "Índice de documentación" del contenedor
+# Documentación; incluirlo aquí creaba una segunda página para el mismo archivo.
+for r in kubo-gateway kubo-iam kubo-crm kubo-erp kubo-analytics kubo-web kubo-infra; do
   f="$WS/$r/README.md"
   if [ -f "$f" ]; then ensure_page "$REP" "$(title_of "$f")" "$f" >/dev/null; fi
 done
