@@ -99,6 +99,7 @@ CALLOUTS = {
     "12 —": ("🛠️", "blue_bg", "El runbook de la semana uno: chequeo diario, playbooks de incidentes y métricas que se vigilan."),
     "Runbook de operación": ("🛠️", "blue_bg", "El runbook de la semana uno: chequeo diario, playbooks de incidentes y métricas que se vigilan."),
     "13 —": ("🧾", "blue_bg", "Cómo enchufar un proveedor tecnológico DIAN: contrato del adaptador, configuración y checklist de habilitación."),
+    "14 —": ("📱", "blue_bg", "El plan por fases para envolver la PWA con Capacitor cuando un negocio pida cámara, push, biometría o impresión térmica (ADR-0023)."),
 }
 DIAGRAMAS = {
     "01 —": ["diag-01-contexto", "diag-01-contenedores", "diag-01-componentes", "diag-01-venta", "diag-01-offline"],
@@ -203,7 +204,7 @@ ensure_page "$DOC" "Índice de documentación" "$WS/kubo-docs/README.md" >/dev/n
 
 DOCS=(01-arquitectura 02-modelo-datos 03-api 04-seguridad 05-despliegue 06-manual-usuario
       07-pruebas 08-trazabilidad 09-demo-guion 10-auditoria 11-plan-de-cierre
-      12-runbook-operacion 13-guia-adaptador-facturacion)
+      12-runbook-operacion 13-guia-adaptador-facturacion 14-plan-app-movil)
 for d in "${DOCS[@]}"; do
   f="$WS/kubo-docs/$d.md"
   if [ -f "$f" ]; then
@@ -263,7 +264,7 @@ INTRO="/tmp/opencode/notion-kubo-intro.md"
   echo
   echo "- **Verificación vigente**: \`make smoke\` 192/192 · \`make ci\` 13/13 · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 %."
   echo "- **Demo pública**: [https://kubo.shares.zrok.io](https://kubo.shares.zrok.io) — túnel zrok (despliegue en ADR-0028 y guía 05 §9)."
-  echo "- **Contenido**: Estado del proyecto, Documentación (01–13), ADRs, Evidencia y Repositorios."
+  echo "- **Contenido**: Estado del proyecto, Documentación (01–14), ADRs, Evidencia y Repositorios."
   echo "- **Fuente de verdad**: los repositorios en GitHub (cuenta NFGS); este espacio es un espejo de consulta."
   echo "- **Huella de sincronización**: \`${FP}\` (kubo-sync)."
   echo

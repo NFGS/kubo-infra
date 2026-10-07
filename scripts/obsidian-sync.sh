@@ -55,7 +55,7 @@ DOCS = [
     "01-arquitectura", "02-modelo-datos", "03-api", "04-seguridad",
     "05-despliegue", "06-manual-usuario", "07-pruebas", "08-trazabilidad",
     "09-demo-guion", "10-auditoria", "11-plan-de-cierre",
-    "12-runbook-operacion", "13-guia-adaptador-facturacion",
+    "12-runbook-operacion", "13-guia-adaptador-facturacion", "14-plan-app-movil",
 ]
 
 mapa = {}  # src normalizado -> (nota relativa al vault sin .md, titulo, tipo)
