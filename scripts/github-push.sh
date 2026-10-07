@@ -7,8 +7,8 @@
 #   2. Que la cuenta activa sea la correcta:  gh auth status
 #
 # Uso:
-#   ./kubo-infra/scripts/github-push.sh                 # cuenta activa, privados
-#   ./kubo-infra/scripts/github-push.sh --public        # visibles
+#   ./kubo-infra/scripts/github-push.sh                 # cuenta activa, públicos (ADR-0029)
+#   ./kubo-infra/scripts/github-push.sh --private       # visibles solo para ti
 #   ./kubo-infra/scripts/github-push.sh mi-org          # bajo una organizacion
 #   KUBO_FORCE=true ./kubo-infra/scripts/github-push.sh # sin confirmacion
 #
@@ -17,7 +17,8 @@
 set -uo pipefail
 
 OWNER=""
-VISIBILIDAD="--private"
+# ADR-0029: los repositorios de Kubo son publicos por defecto.
+VISIBILIDAD="--public"
 
 for argumento in "$@"; do
   case "${argumento}" in
