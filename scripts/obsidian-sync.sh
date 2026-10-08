@@ -143,7 +143,7 @@ REPOS = [
     ("kubo-crm", "Clientes, cifrado de PII y pipeline (Ruby + Rails 8)"),
     ("kubo-erp", "Catálogo, inventario y ventas (Elixir + Phoenix)"),
     ("kubo-analytics", "KPIs, tablero y agregaciones (Python + FastAPI)"),
-    ("kubo-web", "PWA offline-first (React 19 + Vite + Tailwind)"),
+    ("kubo-web", "PWA offline-first y app Android (Capacitor) — React 19 + Vite + Tailwind"),
     ("kubo-infra", "Compose, seed y pruebas de humo (Docker)"),
     ("kubo-docs", "Arquitectura, ADRs y manuales (Markdown + Mermaid)"),
 ]
@@ -177,7 +177,7 @@ tags:
 | **Tipo** | Monorepo poliglota (9 repos): gateway, IAM, CRM, ERP, analítica, PWA, infra y docs |
 | **Autor** | Nelson Fabián Gallego Sánchez — SENA ADSO · Universidad del Quindío |
 | **Estado** | **v0.3.0** operable en un negocio (fases 0–6 completadas) |
-| **Calidad** | smoke 192/192 · `make ci` 13/13 · 231 pruebas de servicio · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 % |
+| **Calidad** | smoke 192/192 · `make ci` 13/13 · 231 pruebas de servicio · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 % · suite móvil 4/4 (emulador) |
 | **Espejos** | GitHub (fuente de verdad) · Notion · este vault |
 
 ## Enlaces oficiales

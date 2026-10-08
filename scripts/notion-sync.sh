@@ -238,7 +238,7 @@ declare -A REPOS_DESC=(
   [kubo-crm]="Clientes, cifrado de PII y pipeline (Ruby + Rails 8)"
   [kubo-erp]="Catálogo, inventario y ventas (Elixir + Phoenix)"
   [kubo-analytics]="KPIs, tablero y agregaciones (Python + FastAPI)"
-  [kubo-web]="PWA offline-first (React 19 + Vite + Tailwind)"
+  [kubo-web]="PWA offline-first y app Android (Capacitor) — React 19 + Vite + Tailwind"
   [kubo-infra]="Compose, seed y pruebas de humo (Docker)"
   [kubo-docs]="Arquitectura, ADRs y manuales (Markdown + Mermaid)"
 )
@@ -264,7 +264,7 @@ INTRO="/tmp/opencode/notion-kubo-intro.md"
 {
   echo "ERP + CRM autoalojable para PYMES. Documentación espejo del repositorio, sincronizada el $(date +%F)."
   echo
-  echo "- **Verificación vigente**: \`make smoke\` 192/192 · \`make ci\` 13/13 · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 %."
+  echo "- **Verificación vigente**: \`make smoke\` 192/192 · \`make ci\` 13/13 · contratos 23/23 · E2E 5/5 · ERP ratchet 37.68 % · suite móvil 4/4 (emulador Android)."
   echo "- **Demo pública**: [https://kubo.shares.zrok.io](https://kubo.shares.zrok.io) — túnel zrok (despliegue en ADR-0028 y guía 05 §9)."
   echo "- **Contenido**: Estado del proyecto, Documentación (01–14), ADRs, Evidencia y Repositorios."
   echo "- **Fuente de verdad**: los repositorios en GitHub (cuenta NFGS); este espacio es un espejo de consulta."
