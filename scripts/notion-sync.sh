@@ -91,7 +91,7 @@ CALLOUTS = {
     "04 —": ("🔐", "blue_bg", "El modelo de confianza: borde único, malla mTLS, RLS activo, cifrado de campos y las pruebas de seguridad del gate."),
     "05 —": ("🚀", "blue_bg", "Cómo se instala y opera: compose de 12 contenedores, instalación remota con Ansible y el borde TLS."),
     "06 —": ("📖", "blue_bg", "La guía del día a día: vender, comprar, inventario, clientes y preguntas frecuentes."),
-    "07 —": ("✅", "blue_bg", "Los tres niveles de verificación: 231 pruebas de servicio, 192 comprobaciones de humo y el gate local de 13 verificaciones."),
+    "07 —": ("✅", "blue_bg", "Los cuatro niveles de verificación: 246 pruebas de servicio, 192 comprobaciones de humo, la suite móvil en el emulador y el gate local de 13 verificaciones."),
     "08 —": ("🔗", "blue_bg", "Requisito ↔ caso de uso ↔ historia ↔ prueba: cada pendiente con su evidencia."),
     "09 —": ("🎬", "blue_bg", "El guion de 6–7 minutos para demostrar el producto, con frases de respaldo si algo falla en vivo."),
     "10 —": ("🔍", "blue_bg", "La auditoría que originó el plan: hallazgos corregidos, mediciones de carga y pendientes declarados."),
